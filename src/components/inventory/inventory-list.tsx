@@ -5,13 +5,9 @@ import Link from 'next/link'
 import { SearchInput } from '@/components/forms/search-input'
 import { FilterChip } from '@/components/forms/filter-chip'
 import { EmptyState } from '@/components/layout/empty-state'
-import { PartStatusBadge } from './part-status-badge'
-import { ConditionBadge } from './condition-badge'
-import { MarketplaceVisibilityBadge } from './marketplace-visibility-badge'
-import { QRStatusBadge } from './qr-status-badge'
+import { PartRow } from './part-row'
 import { CATEGORIES, PART_STATUS_LABELS } from '@/lib/constants'
 import { ROUTES } from '@/lib/routes'
-import { formatPrice } from '@/lib/utils'
 import type { Part, PartStatus } from '@/types'
 
 // ─── Filter types ────────────────────────────────────────────────────────────
@@ -39,10 +35,6 @@ const STATUS_OPTIONS: { value: PartStatus | null; label: string }[] = [
   { value: 'sold', label: PART_STATUS_LABELS.sold },
   { value: 'draft', label: PART_STATUS_LABELS.draft },
 ]
-
-function getCategoryName(id: string) {
-  return CATEGORIES.find((c) => c.id === id)?.name ?? id
-}
 
 function hasAnyFilter(f: Filters) {
   return !!(f.search || f.status || f.category || f.isPublished !== null || f.hasQR !== null)
@@ -150,60 +142,6 @@ function PartActionsMenu({ part }: { part: Part }) {
           </button>
         </div>
       )}
-    </div>
-  )
-}
-
-// ─── Single part row ──────────────────────────────────────────────────────────
-
-function PartRow({ part }: { part: Part }) {
-  return (
-    <div className="flex items-start gap-3 px-4 py-4 border-b border-slate-100 last:border-0 hover:bg-slate-50 transition-colors">
-      {/* Photo placeholder */}
-      <div className="w-12 h-12 rounded-lg bg-slate-100 flex-shrink-0 flex items-center justify-center text-slate-400">
-        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5} aria-hidden="true">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-        </svg>
-      </div>
-
-      {/* Content */}
-      <div className="flex-1 min-w-0">
-        {/* Name + price + actions */}
-        <div className="flex items-start gap-2">
-          <p className="flex-1 text-sm font-semibold text-slate-900 min-w-0 truncate">
-            {part.partName}
-          </p>
-          <div className="flex items-center gap-1 flex-shrink-0">
-            <p className="text-sm font-bold text-slate-900 tabular-nums">
-              {formatPrice(part.price)}
-            </p>
-            <PartActionsMenu part={part} />
-          </div>
-        </div>
-
-        {/* Vehicle + category */}
-        <p className="text-xs text-slate-500 mt-0.5 truncate">
-          {part.vehicle.make} {part.vehicle.model} {part.vehicle.year}
-          <span className="text-slate-300 mx-1">·</span>
-          {getCategoryName(part.categoryId)}
-        </p>
-
-        {/* SKU + qty */}
-        <p className="text-xs text-slate-400 font-mono mt-0.5">
-          {part.sku}
-          {part.quantity > 1 && (
-            <span className="font-sans not-italic text-slate-400"> · Qty: {part.quantity}</span>
-          )}
-        </p>
-
-        {/* Badges */}
-        <div className="flex flex-wrap gap-1 mt-2">
-          <PartStatusBadge status={part.status} />
-          <ConditionBadge condition={part.condition} />
-          <MarketplaceVisibilityBadge isPublished={part.isPublished} />
-          <QRStatusBadge printed={!!part.qrCodeId} />
-        </div>
-      </div>
     </div>
   )
 }
@@ -346,7 +284,14 @@ export function InventoryList({ parts }: { parts: Part[] }) {
             }
           />
         ) : (
-          filtered.map((part) => <PartRow key={part.id} part={part} />)
+          filtered.map((part) => (
+            <PartRow
+              key={part.id}
+              variant="full"
+              part={part}
+              actions={<PartActionsMenu part={part} />}
+            />
+          ))
         )}
       </div>
     </div>
