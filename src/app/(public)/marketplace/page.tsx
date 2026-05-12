@@ -1,16 +1,17 @@
 import { PageContainer } from '@/components/layout/page-container'
 import { SectionHeader } from '@/components/layout/section-header'
+import { MarketplaceList } from '@/components/marketplace/marketplace-list'
+import { getMarketplaceParts } from '@/lib/data/marketplace'
 
 export default function MarketplacePage() {
+  const count = getMarketplaceParts().length
   return (
     <PageContainer>
       <SectionHeader
         title="Marketplace"
-        subtitle="Μεταχειρισμένα ανταλλακτικά αυτοκινήτων"
+        subtitle={`${count} διαθέσιμα ανταλλακτικά`}
       />
-      <div className="rounded-xl border border-dashed border-slate-300 py-16 text-center text-sm text-slate-400">
-        Σε ανάπτυξη — Phase 7
-      </div>
+      <MarketplaceList />
     </PageContainer>
   )
 }
