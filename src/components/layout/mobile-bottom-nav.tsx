@@ -10,11 +10,17 @@ export interface MobileNavItem {
   href: string
   icon: ReactNode
   badge?: number
+  exact?: boolean
 }
 
 interface MobileBottomNavProps {
   items: MobileNavItem[]
   className?: string
+}
+
+function isActive(pathname: string, item: MobileNavItem): boolean {
+  if (item.exact) return pathname === item.href
+  return pathname === item.href || pathname.startsWith(item.href + '/')
 }
 
 export function MobileBottomNav({ items, className }: MobileBottomNavProps) {
@@ -24,13 +30,13 @@ export function MobileBottomNav({ items, className }: MobileBottomNavProps) {
     <nav
       className={cn(
         'fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-slate-200',
-        'flex items-stretch h-16 lg:hidden',
+        'flex items-stretch h-16 lg:hidden safe-area-inset-bottom',
         className
       )}
       aria-label="Πλοήγηση"
     >
       {items.map((item) => {
-        const active = pathname === item.href
+        const active = isActive(pathname, item)
         return (
           <Link
             key={item.href}
@@ -44,7 +50,7 @@ export function MobileBottomNav({ items, className }: MobileBottomNavProps) {
             <span className="w-6 h-6 flex items-center justify-center relative" aria-hidden="true">
               {item.icon}
               {item.badge != null && item.badge > 0 && (
-                <span className="absolute -top-1 -right-1 min-w-[1rem] h-4 px-0.5 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
+                <span className="absolute -top-1 -right-1.5 min-w-[1rem] h-4 px-0.5 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
                   {item.badge > 99 ? '99+' : item.badge}
                 </span>
               )}

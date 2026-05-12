@@ -1,3 +1,6 @@
-export default function SellerLayout({ children }: { children: React.ReactNode }) {
-  return <>{children}</>
+import { SellerShell } from '@/components/layout/seller-shell'
+import type { ReactNode } from 'react'
+
+export default function SellerLayout({ children }: { children: ReactNode }) {
+  return <SellerShell>{children}</SellerShell>
 }
