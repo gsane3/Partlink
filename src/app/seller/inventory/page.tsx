@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { mockParts } from '@/lib/mock-data/parts'
+import { getCurrentSellerId, getSellerInventoryStats, getSellerInventory } from '@/lib/data/seller'
 import { DashboardGrid } from '@/components/layout/dashboard-grid'
 import { MetricCard } from '@/components/layout/metric-card'
 import { SectionHeader } from '@/components/layout/section-header'
@@ -8,15 +8,10 @@ import { InventoryList } from '@/components/inventory/inventory-list'
 import { ROUTES } from '@/lib/routes'
 import { formatPrice } from '@/lib/utils'
 
-const SELLER_ID = 'seller-001'
-
 export default function SellerInventoryPage() {
-  const parts = mockParts.filter((p) => p.sellerId === SELLER_ID)
-
-  const available = parts.filter((p) => p.status === 'available')
-  const published = parts.filter((p) => p.isPublished)
-  const stockValue = available.reduce((sum, p) => sum + p.price * p.quantity, 0)
-  const missingQR = parts.filter((p) => !p.qrCodeId).length
+  const sellerId = getCurrentSellerId()
+  const parts = getSellerInventory(sellerId)
+  const { available, published, stockValue, missingQR } = getSellerInventoryStats(sellerId)
 
   return (
     <PageContainer className="pb-36 lg:pb-6">
@@ -51,7 +46,7 @@ export default function SellerInventoryPage() {
         <MetricCard
           className="p-3 lg:p-4"
           label="Διαθέσιμα"
-          value={available.length}
+          value={available}
           icon={
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -61,7 +56,7 @@ export default function SellerInventoryPage() {
         <MetricCard
           className="p-3 lg:p-4"
           label="Δημοσιευμένα"
-          value={published.length}
+          value={published}
           icon={
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064" />
@@ -89,9 +84,6 @@ export default function SellerInventoryPage() {
           <p className="text-sm text-amber-800">
             <span className="font-semibold">{missingQR} ανταλλακτικά</span> χωρίς QR label.
           </p>
-          <button type="button" className="ml-auto text-xs font-medium text-amber-700 hover:text-amber-900 flex-shrink-0">
-            Εκτύπωση
-          </button>
         </div>
       )}
 

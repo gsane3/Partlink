@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { PAYMENT_METHOD_LABELS } from '@/lib/constants'
+import { formatOrderNumber } from '@/lib/utils'
 import type { Order } from '@/types'
 
 interface DispatchAlertProps {
@@ -31,7 +32,7 @@ export function DispatchAlert({ orders }: DispatchAlertProps) {
                 {order.items[0]?.part.partName ?? '—'}
               </p>
               <p className="text-xs text-slate-500 mt-0.5">
-                #{order.id.replace('order-', '').padStart(3, '0').toUpperCase()}
+                #{formatOrderNumber(order.id)}
                 {order.payment?.method
                   ? ` · ${PAYMENT_METHOD_LABELS[order.payment.method]}`
                   : ''}

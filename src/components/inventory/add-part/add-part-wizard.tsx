@@ -3,7 +3,7 @@
 import { useState, useRef } from 'react'
 import Link from 'next/link'
 import { QRCodeSVG } from 'qrcode.react'
-import { cn } from '@/lib/utils'
+import { cn, generateSKU } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -610,7 +610,7 @@ export function AddPartWizard() {
     if (err) { setError(err); return }
     setError(null)
     if (step === 5) {
-      const generated = `PL-001-${String(Date.now()).slice(-4)}`
+      const generated = generateSKU('seller-001', Date.now() % 10000)
       setSku(generated)
       setStep(6)
     } else {

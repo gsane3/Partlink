@@ -2,10 +2,10 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { mockParts } from '@/lib/mock-data/parts'
-import { mockOrders } from '@/lib/mock-data/orders'
+import { getSellerInventory, getSellerOrders } from '@/lib/data/seller'
 import { PAYMENT_METHOD_LABELS, DELIVERY_METHOD_LABELS } from '@/lib/constants'
 import { ROUTES } from '@/lib/routes'
+import { formatOrderNumber } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { PartStatusBadge } from '@/components/inventory/part-status-badge'
 import { ConditionBadge } from '@/components/inventory/condition-badge'
@@ -40,13 +40,12 @@ function doScan(raw: string): ScanState {
     return { kind: 'error', message: 'Συμπλήρωσε SKU ή κωδικό QR' }
   }
   const sku = parseInput(raw)
-  const part = mockParts.find((p) => p.sellerId === SELLER_ID && p.sku === sku)
+  const part = getSellerInventory(SELLER_ID).find((p) => p.sku === sku)
   if (!part) {
     return { kind: 'error', message: `Δεν βρέθηκε ανταλλακτικό: ${sku}` }
   }
-  const order = mockOrders.find(
+  const order = getSellerOrders(SELLER_ID).find(
     (o) =>
-      o.sellerId === SELLER_ID &&
       (o.status === 'pending' || o.status === 'confirmed') &&
       o.items.some((i) => i.partId === part.id)
   )
@@ -94,7 +93,7 @@ function PartCard({ part }: { part: Part }) {
 // ─── Shared: order dispatch card ──────────────────────────────────────────────
 
 function OrderDispatchCard({ order }: { order: Order }) {
-  const orderId = order.id.replace('order-0', '').padStart(3, '0').toUpperCase()
+  const orderId = formatOrderNumber(order.id)
   return (
     <div className="bg-amber-50 border border-amber-200 rounded-xl overflow-hidden">
       <div className="px-4 py-2.5 bg-amber-100 border-b border-amber-200 flex items-center gap-2">
@@ -351,7 +350,7 @@ function SuccessDispatchScreen({
   order: Order
   onReset: () => void
 }) {
-  const orderId = order.id.replace('order-0', '').padStart(3, '0').toUpperCase()
+  const orderId = formatOrderNumber(order.id)
 
   const updates = [
     { label: 'Κατάσταση παραγγελίας', value: 'Απεστάλη', color: 'text-green-700' },
