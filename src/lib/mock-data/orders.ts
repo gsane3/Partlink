@@ -138,4 +138,36 @@ export const mockOrders: Order[] = [
     createdAt: '2026-04-17T11:00:00Z',
     updatedAt: '2026-04-20T16:00:00Z',
   },
+  {
+    id: 'order-005',
+    buyerId: 'buyer-002',
+    sellerId: 'seller-001',
+    items: [
+      {
+        id: 'item-005',
+        orderId: 'order-005',
+        partId: 'part-003',
+        part: mockParts[2],
+        quantity: 1,
+        priceAtOrder: 320,
+      },
+    ],
+    status: 'confirmed',
+    totalAmount: 320,
+    payment: {
+      id: 'payment-005',
+      orderId: 'order-005',
+      method: 'bank_transfer',
+      status: 'paid',
+      amount: 320,
+      paidAt: '2026-05-11T08:00:00Z',
+    },
+    shipment: {
+      id: 'shipment-005',
+      orderId: 'order-005',
+      method: 'courier',
+    },
+    createdAt: '2026-05-11T07:30:00Z',
+    updatedAt: '2026-05-11T08:00:00Z',
+  },
 ]
