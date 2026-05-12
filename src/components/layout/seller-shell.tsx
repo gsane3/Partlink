@@ -187,7 +187,9 @@ export function SellerShell({ children }: { children: ReactNode }) {
       </div>
 
       <MobileBottomNav items={SELLER_MOBILE_NAV} />
-      <MobileFAB actions={SELLER_FAB_ACTIONS} />
+      {!['/seller/inventory/add', '/seller/inventory/vin-import', '/seller/inventory/scan'].includes(pathname) && (
+        <MobileFAB actions={SELLER_FAB_ACTIONS} />
+      )}
     </div>
   )
 }
