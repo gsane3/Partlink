@@ -1,7 +1,8 @@
 import { mockSellers } from '@/lib/mock-data/sellers'
 import { mockParts } from '@/lib/mock-data/parts'
 import { mockOrders } from '@/lib/mock-data/orders'
-import type { Part, Order, Seller } from '@/types'
+import { mockBuyers } from '@/lib/mock-data/buyers'
+import type { Part, Order, Seller, Buyer } from '@/types'
 
 const CURRENT_SELLER_ID = 'seller-001'
 
@@ -33,6 +34,14 @@ export function getSellerDispatchOrders(sellerId: string): Order[] {
 
 export function getSellerPartById(partId: string): Part | undefined {
   return mockParts.find((p) => p.id === partId)
+}
+
+export function getOrderById(orderId: string): Order | undefined {
+  return mockOrders.find((o) => o.id === orderId)
+}
+
+export function getBuyerById(buyerId: string): Buyer | undefined {
+  return mockBuyers.find((b) => b.id === buyerId)
 }
 
 export interface SellerInventoryStats {
