@@ -104,7 +104,9 @@ const PAGE_TITLES: Record<string, string> = {
 }
 
 function getTitle(pathname: string): string {
-  return PAGE_TITLES[pathname] ?? 'Admin'
+  if (PAGE_TITLES[pathname]) return PAGE_TITLES[pathname]
+  if (pathname.startsWith('/admin/verifications/')) return 'Έλεγχος πωλητή'
+  return 'Admin'
 }
 
 export function AdminShell({ children }: { children: ReactNode }) {
