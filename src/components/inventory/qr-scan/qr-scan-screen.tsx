@@ -4,13 +4,17 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { getSellerInventory, getSellerOrders } from '@/lib/data/seller'
 import { PartCard } from '@/components/inventory/part-card'
-import { PAYMENT_METHOD_LABELS, DELIVERY_METHOD_LABELS } from '@/lib/constants'
+import { PAYMENT_METHOD_LABELS, DELIVERY_METHOD_LABELS, CATEGORIES } from '@/lib/constants'
 import { ROUTES } from '@/lib/routes'
 import { formatOrderNumber } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import type { Part, Order } from '@/types'
+import { findVehicleImport } from './mock-vehicle-imports'
+import type { VehicleImport, GeneratedPart } from '@/components/inventory/vin-import/types'
 
-// ─── State ────────────────────────────────────────────────────────────────────
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+type VehiclePartAction = 'removed_from_vehicle' | 'added_to_stock' | 'sold'
 
 type ScanState =
   | { kind: 'idle' }
@@ -19,29 +23,66 @@ type ScanState =
   | { kind: 'error'; message: string }
   | { kind: 'success_dispatch'; part: Part; order: Order }
   | { kind: 'success_stock'; part: Part; action: 'sold' | 'reprint' }
+  | { kind: 'found_vehicle'; vehicleImport: VehicleImport }
+  | { kind: 'success_vehicle'; vehicleImport: VehicleImport; partName: string; action: VehiclePartAction }
+
+type ParsedInput =
+  | { type: 'part'; sku: string }
+  | { type: 'vehicle'; vehicleCode: string }
 
 // ─── Data lookup ──────────────────────────────────────────────────────────────
 
 const SELLER_ID = 'seller-001'
 
-function parseInput(raw: string): string {
+const VEHICLE_ACTION_LABELS: Record<VehiclePartAction, string> = {
+  removed_from_vehicle: 'Βγήκε από το αυτοκίνητο',
+  added_to_stock: 'Μπήκε στο stock',
+  sold: 'Πωλήθηκε',
+}
+
+function getCategoryName(id: string): string {
+  return CATEGORIES.find((c) => c.id === id)?.name ?? id
+}
+
+function parseInput(raw: string): ParsedInput {
   const t = raw.trim()
-  // Handle partlink:seller:partId:SKU format produced by QR generation
+  // partlink:vehicle:seller-001:VEH-001-8405 — vehicle QR produced by VIN Import
+  if (t.toLowerCase().startsWith('partlink:vehicle:')) {
+    const segs = t.split(':')
+    return { type: 'vehicle', vehicleCode: (segs[3] ?? '').toUpperCase() }
+  }
+  // partlink:seller-001:partId:SKU — part QR produced by Add Part
   if (t.toLowerCase().startsWith('partlink:')) {
     const segs = t.split(':')
-    return (segs[3] ?? '').toUpperCase()
+    return { type: 'part', sku: (segs[3] ?? '').toUpperCase() }
   }
-  return t.toUpperCase()
+  const upper = t.toUpperCase()
+  // VEH-XXX-XXXX — short vehicle code entered manually
+  if (upper.startsWith('VEH-')) {
+    return { type: 'vehicle', vehicleCode: upper }
+  }
+  return { type: 'part', sku: upper }
 }
 
 function doScan(raw: string): ScanState {
   if (!raw.trim()) {
     return { kind: 'error', message: 'Συμπλήρωσε SKU ή κωδικό QR' }
   }
-  const sku = parseInput(raw)
-  const part = getSellerInventory(SELLER_ID).find((p) => p.sku === sku)
+
+  const parsed = parseInput(raw)
+
+  if (parsed.type === 'vehicle') {
+    const vehicleImport = findVehicleImport(parsed.vehicleCode)
+    if (!vehicleImport) {
+      return { kind: 'error', message: `Δεν βρέθηκε εισαγμένο όχημα: ${parsed.vehicleCode}` }
+    }
+    return { kind: 'found_vehicle', vehicleImport }
+  }
+
+  // Part scan (existing behavior)
+  const part = getSellerInventory(SELLER_ID).find((p) => p.sku === parsed.sku)
   if (!part) {
-    return { kind: 'error', message: `Δεν βρέθηκε ανταλλακτικό: ${sku}` }
+    return { kind: 'error', message: `Δεν βρέθηκε ανταλλακτικό: ${parsed.sku}` }
   }
   const order = getSellerOrders(SELLER_ID).find(
     (o) =>
@@ -53,12 +94,16 @@ function doScan(raw: string): ScanState {
     : { kind: 'found_stock', part }
 }
 
-// ─── Demo scan shortcuts ──────────────────────────────────────────────────────
+// ─── Demo shortcuts ───────────────────────────────────────────────────────────
 
-const DEMO_SCANS = [
+const DEMO_PART_SCANS = [
   { sku: 'PL-001-0002', label: 'Φανάρι εμπρός W204', sub: 'Παραγγελία σε αναμονή' },
   { sku: 'PL-001-0003', label: 'ECU Golf 5 1.9 TDI', sub: 'Παραγγελία επιβεβαιωμένη' },
   { sku: 'PL-001-0004', label: 'Αερόσακος Astra H', sub: 'Χωρίς παραγγελία' },
+]
+
+const DEMO_VEHICLE_SCANS = [
+  { code: 'VEH-001-8405', label: 'BMW E90 320d 2013', sub: 'Όχημα από VIN Import' },
 ]
 
 // ─── Shared: order dispatch card ──────────────────────────────────────────────
@@ -100,7 +145,7 @@ function OrderDispatchCard({ order }: { order: Order }) {
   )
 }
 
-// ─── Shared: scan success indicator ──────────────────────────────────────────
+// ─── Shared: scan success banner ──────────────────────────────────────────────
 
 function ScanSuccessBanner({ message }: { message: string }) {
   return (
@@ -113,7 +158,7 @@ function ScanSuccessBanner({ message }: { message: string }) {
   )
 }
 
-// ─── Screen: Idle (scanning) ──────────────────────────────────────────────────
+// ─── Screen: Idle ─────────────────────────────────────────────────────────────
 
 function IdleScreen({
   input,
@@ -122,7 +167,7 @@ function IdleScreen({
 }: {
   input: string
   setInput: (v: string) => void
-  onScan: (sku?: string) => void
+  onScan: (raw?: string) => void
 }) {
   return (
     <>
@@ -135,7 +180,6 @@ function IdleScreen({
         <span className="absolute top-6 right-6 w-8 h-8 border-t-[3px] border-r-[3px] border-white/70 rounded-tr-sm" />
         <span className="absolute bottom-6 left-6 w-8 h-8 border-b-[3px] border-l-[3px] border-white/70 rounded-bl-sm" />
         <span className="absolute bottom-6 right-6 w-8 h-8 border-b-[3px] border-r-[3px] border-white/70 rounded-br-sm" />
-
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
           <svg className="w-16 h-16 text-white/25" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={0.9} aria-hidden="true">
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
@@ -145,10 +189,10 @@ function IdleScreen({
         </div>
       </div>
 
-      {/* Manual SKU entry */}
+      {/* Manual entry */}
       <div className="mb-6">
         <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide mb-2">
-          Μη αυτόματη εισαγωγή SKU
+          Μη αυτόματη εισαγωγή
         </p>
         <div className="flex gap-2">
           <input
@@ -156,7 +200,7 @@ function IdleScreen({
             value={input}
             onChange={(e) => setInput(e.target.value.toUpperCase())}
             onKeyDown={(e) => e.key === 'Enter' && onScan()}
-            placeholder="π.χ. PL-001-0002"
+            placeholder="π.χ. PL-001-0002 ή VEH-001-8405"
             className="flex-1 h-11 px-3 text-sm font-mono bg-white border border-slate-200 rounded-lg text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           />
           <Button variant="secondary" onClick={() => onScan()} className="flex-shrink-0 h-11">
@@ -165,13 +209,13 @@ function IdleScreen({
         </div>
       </div>
 
-      {/* Demo scan chips */}
-      <div>
+      {/* Demo — parts */}
+      <div className="mb-5">
         <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide mb-2">
-          Demo — Σκάναρε με:
+          Demo ανταλλακτικά
         </p>
         <div className="space-y-2">
-          {DEMO_SCANS.map((demo) => (
+          {DEMO_PART_SCANS.map((demo) => (
             <button
               key={demo.sku}
               type="button"
@@ -181,6 +225,42 @@ function IdleScreen({
               <div className="min-w-0">
                 <p className="text-sm font-medium text-slate-900">{demo.label}</p>
                 <p className="text-xs font-mono text-slate-400 mt-0.5">{demo.sku}</p>
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <span className="text-xs text-slate-500">{demo.sub}</span>
+                <svg className="w-4 h-4 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                </svg>
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Demo — vehicles */}
+      <div>
+        <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide mb-2">
+          Demo αυτοκίνητα (VIN Import)
+        </p>
+        <div className="space-y-2">
+          {DEMO_VEHICLE_SCANS.map((demo) => (
+            <button
+              key={demo.code}
+              type="button"
+              onClick={() => onScan(demo.code)}
+              className="w-full flex items-center justify-between gap-3 bg-white border border-blue-200 rounded-xl px-4 py-3.5 hover:bg-blue-50 active:bg-blue-100 transition-colors text-left"
+            >
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-7 h-7 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
+                  <svg className="w-4 h-4 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 17a2 2 0 11-4 0 2 2 0 014 0zM19 17a2 2 0 11-4 0 2 2 0 014 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1M5 17a2 2 0 104 0m-4 0a2 2 0 114 0m6 0a2 2 0 104 0m-4 0a2 2 0 114 0" />
+                  </svg>
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-slate-900">{demo.label}</p>
+                  <p className="text-xs font-mono text-blue-500 mt-0.5">{demo.code}</p>
+                </div>
               </div>
               <div className="flex items-center gap-2 flex-shrink-0">
                 <span className="text-xs text-slate-500">{demo.sub}</span>
@@ -223,7 +303,6 @@ function DispatchScreen({
       </p>
       <OrderDispatchCard order={order} />
 
-      {/* Sticky action bar */}
       <div className="fixed bottom-16 lg:bottom-0 left-0 lg:left-60 right-0 z-30 bg-white border-t border-slate-200 px-4 py-3 flex gap-3">
         <Button variant="outline" onClick={onBack} className="flex-shrink-0 gap-1">
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
@@ -311,6 +390,162 @@ function StockScreen({
   )
 }
 
+// ─── Screen: Found — vehicle ──────────────────────────────────────────────────
+
+function VehiclePartRow({
+  part,
+  onAction,
+}: {
+  part: GeneratedPart
+  onAction: (action: VehiclePartAction) => void
+}) {
+  return (
+    <div className="px-4 py-4 border-b border-slate-100 last:border-0">
+      <div className="flex items-start justify-between gap-2 mb-2.5">
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold text-slate-900 leading-tight">{part.partName}</p>
+          <p className="text-xs text-slate-400 mt-0.5">
+            {getCategoryName(part.categoryId)} · €{part.price}
+          </p>
+        </div>
+        {part.publishToMarketplace && (
+          <span className="flex-shrink-0 text-[11px] font-semibold text-green-700 bg-green-50 border border-green-200 px-2 py-0.5 rounded">
+            Δημοσ.
+          </span>
+        )}
+      </div>
+
+      <div className="flex gap-1.5">
+        <button
+          type="button"
+          onClick={() => onAction('removed_from_vehicle')}
+          className="flex-1 h-9 text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 active:bg-amber-200 transition-colors"
+        >
+          Βγήκε
+        </button>
+        <button
+          type="button"
+          onClick={() => onAction('added_to_stock')}
+          className="flex-1 h-9 text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 active:bg-blue-200 transition-colors"
+        >
+          Στο stock
+        </button>
+        <button
+          type="button"
+          onClick={() => onAction('sold')}
+          className="flex-1 h-9 text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 active:bg-slate-100 transition-colors"
+        >
+          Πωλήθηκε
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function VehicleScreen({
+  vehicleImport,
+  onPartAction,
+  onBack,
+}: {
+  vehicleImport: VehicleImport
+  onPartAction: (partName: string, action: VehiclePartAction) => void
+  onBack: () => void
+}) {
+  const [searchQuery, setSearchQuery] = useState('')
+  const { vehicle, vehicleCode, parts } = vehicleImport
+
+  const filteredParts = searchQuery.trim()
+    ? parts.filter((p) => p.partName.toLowerCase().includes(searchQuery.toLowerCase()))
+    : parts
+
+  const publishedCount = parts.filter((p) => p.publishToMarketplace).length
+
+  return (
+    <>
+      <ScanSuccessBanner message="QR αυτοκινήτου αναγνωρίστηκε" />
+
+      {/* Vehicle summary */}
+      <div className="bg-white border border-slate-200 rounded-xl overflow-hidden mb-4">
+        <div className="flex items-center justify-between px-4 py-2.5 bg-slate-50 border-b border-slate-100">
+          <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Στοιχεία οχήματος</p>
+          <p className="text-xs font-mono font-semibold text-slate-500">{vehicleCode}</p>
+        </div>
+        <div className="px-4 py-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-slate-500">Μάρκα / Μοντέλο</span>
+            <span className="text-sm font-semibold text-slate-900">{vehicle.make} {vehicle.model}</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-slate-500">Έτος</span>
+            <span className="text-sm font-semibold text-slate-900">{vehicle.year}</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-slate-500">Κινητήρας</span>
+            <span className="text-sm font-semibold text-slate-900 font-mono">{vehicle.engine} · {vehicle.fuel}</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-slate-500">VIN</span>
+            <span className="text-xs font-mono text-slate-600">{vehicle.vin}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Stats */}
+      <div className="grid grid-cols-4 gap-2 mb-5">
+        {[
+          { value: parts.length, label: 'Σύνολο' },
+          { value: parts.length, label: 'Στο αυτ.' },
+          { value: 0, label: 'Βγήκε' },
+          { value: publishedCount, label: 'Δημοσ.' },
+        ].map((stat) => (
+          <div key={stat.label} className="bg-white border border-slate-200 rounded-xl p-2.5 text-center">
+            <p className="text-xl font-bold text-slate-900 tabular-nums">{stat.value}</p>
+            <p className="text-[11px] text-slate-500 mt-0.5 leading-tight">{stat.label}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Parts section */}
+      <p className="text-sm font-bold text-slate-900 mb-3">Ποιο ανταλλακτικό βγήκε;</p>
+
+      <input
+        type="text"
+        value={searchQuery}
+        onChange={(e) => setSearchQuery(e.target.value)}
+        placeholder="Αναζήτηση ανταλλακτικού..."
+        className="w-full h-10 px-3 text-sm bg-white border border-slate-200 rounded-lg text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent mb-3"
+      />
+
+      <div className="bg-white border border-slate-200 rounded-xl overflow-hidden mb-5">
+        {filteredParts.length === 0 ? (
+          <div className="px-4 py-6 text-center">
+            <p className="text-sm text-slate-500">Δεν βρέθηκαν αποτελέσματα</p>
+          </div>
+        ) : (
+          filteredParts.map((part) => (
+            <VehiclePartRow
+              key={part.sku}
+              part={part}
+              onAction={(action) => onPartAction(part.partName, action)}
+            />
+          ))
+        )}
+      </div>
+
+      <button
+        type="button"
+        onClick={onBack}
+        className="w-full text-sm font-medium text-slate-500 hover:text-slate-700 flex items-center justify-center gap-1.5 py-2 transition-colors"
+      >
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+        </svg>
+        Σκάναρε άλλο QR
+      </button>
+    </>
+  )
+}
+
 // ─── Screen: Success — dispatch confirmed ─────────────────────────────────────
 
 function SuccessDispatchScreen({
@@ -322,7 +557,6 @@ function SuccessDispatchScreen({
   onReset: () => void
 }) {
   const orderId = formatOrderNumber(order.id)
-
   const updates = [
     { label: 'Κατάσταση παραγγελίας', value: 'Απεστάλη', color: 'text-green-700' },
     { label: 'Κατάσταση ανταλλακτικού', value: 'Απεστάλη', color: 'text-blue-700' },
@@ -337,11 +571,8 @@ function SuccessDispatchScreen({
           <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
         </svg>
       </div>
-
       <h2 className="text-xl font-bold text-slate-900">Αποστολή επιβεβαιώθηκε!</h2>
-      <p className="text-sm text-slate-500 mt-1.5">
-        Η παραγγελία #{orderId} εστάλη επιτυχώς.
-      </p>
+      <p className="text-sm text-slate-500 mt-1.5">Η παραγγελία #{orderId} εστάλη επιτυχώς.</p>
 
       <div className="mt-6 bg-white border border-slate-200 rounded-xl overflow-hidden text-left mb-6">
         <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-100">
@@ -368,16 +599,10 @@ function SuccessDispatchScreen({
           </svg>
           Σκάναρε άλλο QR
         </button>
-        <Link
-          href={ROUTES.SELLER.ORDER_DETAIL(order.id)}
-          className="w-full h-11 border border-slate-200 text-slate-700 text-sm font-medium rounded-xl flex items-center justify-center gap-2 hover:bg-slate-50 active:bg-slate-100 transition-colors"
-        >
+        <Link href={ROUTES.SELLER.ORDER_DETAIL(order.id)} className="w-full h-11 border border-slate-200 text-slate-700 text-sm font-medium rounded-xl flex items-center justify-center gap-2 hover:bg-slate-50 active:bg-slate-100 transition-colors">
           Δες παραγγελία
         </Link>
-        <Link
-          href={ROUTES.SELLER.INVENTORY}
-          className="block text-center text-sm text-slate-500 hover:text-slate-700 py-2 transition-colors"
-        >
+        <Link href={ROUTES.SELLER.INVENTORY} className="block text-center text-sm text-slate-500 hover:text-slate-700 py-2 transition-colors">
           Επιστροφή στο stock
         </Link>
       </div>
@@ -410,7 +635,6 @@ function SuccessStockScreen({
           </svg>
         )}
       </div>
-
       <h2 className="text-xl font-bold text-slate-900">
         {isSold ? 'Σημάνθηκε ως πωλημένο' : 'QR label εκτυπώθηκε'}
       </h2>
@@ -419,11 +643,87 @@ function SuccessStockScreen({
       </p>
 
       <div className="mt-8 space-y-2.5">
+        <button type="button" onClick={onReset} className="w-full h-12 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white text-sm font-semibold rounded-xl flex items-center justify-center gap-2 transition-colors">
+          Σκάναρε άλλο QR
+        </button>
+        <Link href={ROUTES.SELLER.INVENTORY} className="block text-center text-sm text-slate-500 hover:text-slate-700 py-2 transition-colors">
+          Επιστροφή στο stock
+        </Link>
+      </div>
+    </div>
+  )
+}
+
+// ─── Screen: Success — vehicle part action ────────────────────────────────────
+
+function SuccessVehicleScreen({
+  vehicleImport,
+  partName,
+  action,
+  onReset,
+}: {
+  vehicleImport: VehicleImport
+  partName: string
+  action: VehiclePartAction
+  onReset: () => void
+}) {
+  const { vehicle, vehicleCode } = vehicleImport
+  const actionLabel = VEHICLE_ACTION_LABELS[action]
+
+  const iconBg =
+    action === 'sold' ? 'bg-green-100' :
+    action === 'added_to_stock' ? 'bg-blue-100' :
+    'bg-amber-100'
+
+  const iconColor =
+    action === 'sold' ? 'text-green-600' :
+    action === 'added_to_stock' ? 'text-blue-600' :
+    'text-amber-600'
+
+  return (
+    <div className="pt-4 text-center">
+      <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 ${iconBg}`}>
+        <svg className={`w-8 h-8 ${iconColor}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+        </svg>
+      </div>
+
+      <h2 className="text-xl font-bold text-slate-900">{actionLabel}</h2>
+      <p className="text-sm text-slate-500 mt-1.5">{partName}</p>
+
+      <div className="mt-6 bg-white border border-slate-200 rounded-xl overflow-hidden text-left mb-6">
+        <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-100">
+          <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Ενημέρωση</p>
+        </div>
+        <div className="divide-y divide-slate-100">
+          <div className="flex items-center justify-between px-4 py-3">
+            <span className="text-sm text-slate-500">Αυτοκίνητο</span>
+            <span className="text-sm font-semibold text-slate-900">{vehicle.make} {vehicle.model} {vehicle.year}</span>
+          </div>
+          <div className="flex items-center justify-between px-4 py-3">
+            <span className="text-sm text-slate-500">Κωδικός οχήματος</span>
+            <span className="text-xs font-mono text-slate-600">{vehicleCode}</span>
+          </div>
+          <div className="flex items-center justify-between px-4 py-3">
+            <span className="text-sm text-slate-500">Ανταλλακτικό</span>
+            <span className="text-sm font-semibold text-slate-900 truncate ml-4 max-w-[160px]">{partName}</span>
+          </div>
+          <div className="flex items-center justify-between px-4 py-3">
+            <span className="text-sm text-slate-500">Ενέργεια</span>
+            <span className={`text-sm font-semibold ${iconColor}`}>{actionLabel}</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-2.5">
         <button
           type="button"
           onClick={onReset}
           className="w-full h-12 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white text-sm font-semibold rounded-xl flex items-center justify-center gap-2 transition-colors"
         >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
+          </svg>
           Σκάναρε άλλο QR
         </button>
         <Link
@@ -478,11 +778,11 @@ export function QRScanScreen() {
   const [state, setState] = useState<ScanState>({ kind: 'idle' })
   const [input, setInput] = useState('')
 
-  const handleScan = (sku?: string) => {
-    const val = sku ?? input
+  const handleScan = (raw?: string) => {
+    const val = raw ?? input
     const result = doScan(val)
     setState(result)
-    if (sku) setInput(sku)
+    if (raw) setInput(raw)
   }
 
   const reset = () => {
@@ -500,9 +800,7 @@ export function QRScanScreen() {
         <DispatchScreen
           part={state.part}
           order={state.order}
-          onConfirm={() =>
-            setState({ kind: 'success_dispatch', part: state.part, order: state.order })
-          }
+          onConfirm={() => setState({ kind: 'success_dispatch', part: state.part, order: state.order })}
           onBack={reset}
         />
       )}
@@ -510,24 +808,33 @@ export function QRScanScreen() {
       {state.kind === 'found_stock' && (
         <StockScreen
           part={state.part}
-          onAction={(action) =>
-            setState({ kind: 'success_stock', part: state.part, action })
+          onAction={(action) => setState({ kind: 'success_stock', part: state.part, action })}
+          onBack={reset}
+        />
+      )}
+
+      {state.kind === 'found_vehicle' && (
+        <VehicleScreen
+          vehicleImport={state.vehicleImport}
+          onPartAction={(partName, action) =>
+            setState({ kind: 'success_vehicle', vehicleImport: state.vehicleImport, partName, action })
           }
           onBack={reset}
         />
       )}
 
       {state.kind === 'success_dispatch' && (
-        <SuccessDispatchScreen
-          part={state.part}
-          order={state.order}
-          onReset={reset}
-        />
+        <SuccessDispatchScreen part={state.part} order={state.order} onReset={reset} />
       )}
 
       {state.kind === 'success_stock' && (
-        <SuccessStockScreen
-          part={state.part}
+        <SuccessStockScreen part={state.part} action={state.action} onReset={reset} />
+      )}
+
+      {state.kind === 'success_vehicle' && (
+        <SuccessVehicleScreen
+          vehicleImport={state.vehicleImport}
+          partName={state.partName}
           action={state.action}
           onReset={reset}
         />
