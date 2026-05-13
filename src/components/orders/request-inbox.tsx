@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { PriceInput } from '@/components/forms/price-input'
@@ -8,6 +9,7 @@ import { PageContainer } from '@/components/layout/page-container'
 import { SectionHeader } from '@/components/layout/section-header'
 import { FilterChip } from '@/components/forms/filter-chip'
 import { cn, formatDate, formatPrice } from '@/lib/utils'
+import { ROUTES } from '@/lib/routes'
 import { mockBuyerRequests } from '@/lib/mock-data/buyer-requests'
 import type { BuyerRequest, RequestStatus, DeliveryPreference } from '@/lib/mock-data/buyer-requests'
 import type { BadgeVariant } from '@/components/ui/badge'
@@ -137,6 +139,19 @@ function RequestCard({
       {/* ── Expanded detail ── */}
       {isExpanded && (
         <div className="border-t border-slate-100 bg-slate-50/40 px-4 py-4 space-y-4">
+
+          {/* Link to full detail page */}
+          <div className="flex justify-end">
+            <Link
+              href={ROUTES.SELLER.ORDER_DETAIL(req.id)}
+              className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-700 transition-colors"
+            >
+              Άνοιγμα
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+              </svg>
+            </Link>
+          </div>
 
           {/* Buyer details */}
           <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">

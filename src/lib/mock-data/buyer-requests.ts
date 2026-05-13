@@ -145,3 +145,11 @@ export const mockBuyerRequests: BuyerRequest[] = [
     createdAt: '2026-05-08T08:30:00Z',
   },
 ]
+
+export function getBuyerRequests(): BuyerRequest[] {
+  return mockBuyerRequests
+}
+
+export function findBuyerRequestById(id: string): BuyerRequest | undefined {
+  return mockBuyerRequests.find((r) => r.id === id)
+}
