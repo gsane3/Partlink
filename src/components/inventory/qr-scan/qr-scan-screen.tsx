@@ -4,6 +4,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { getSellerInventory, getSellerOrders } from '@/lib/data/seller'
 import { PartCard } from '@/components/inventory/part-card'
+import { ConditionBadge } from '@/components/inventory/condition-badge'
 import { PAYMENT_METHOD_LABELS, DELIVERY_METHOD_LABELS, CATEGORIES } from '@/lib/constants'
 import { ROUTES } from '@/lib/routes'
 import { formatOrderNumber } from '@/lib/utils'
@@ -12,9 +13,7 @@ import type { Part, Order } from '@/types'
 import { findVehicleImport } from './mock-vehicle-imports'
 import type { VehicleImport, GeneratedPart } from '@/components/inventory/vin-import/types'
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-type VehiclePartAction = 'removed_from_vehicle' | 'added_to_stock' | 'sold'
+// ─── State ────────────────────────────────────────────────────────────────────
 
 type ScanState =
   | { kind: 'idle' }
@@ -24,7 +23,7 @@ type ScanState =
   | { kind: 'success_dispatch'; part: Part; order: Order }
   | { kind: 'success_stock'; part: Part; action: 'sold' | 'reprint' }
   | { kind: 'found_vehicle'; vehicleImport: VehicleImport }
-  | { kind: 'success_vehicle'; vehicleImport: VehicleImport; partName: string; action: VehiclePartAction }
+  | { kind: 'success_vehicle_part_removed'; vehicleImport: VehicleImport; partName: string; publishedToMarketplace: boolean }
 
 type ParsedInput =
   | { type: 'part'; sku: string }
@@ -34,24 +33,18 @@ type ParsedInput =
 
 const SELLER_ID = 'seller-001'
 
-const VEHICLE_ACTION_LABELS: Record<VehiclePartAction, string> = {
-  removed_from_vehicle: 'Βγήκε από το αυτοκίνητο',
-  added_to_stock: 'Μπήκε στο stock',
-  sold: 'Πωλήθηκε',
-}
-
 function getCategoryName(id: string): string {
   return CATEGORIES.find((c) => c.id === id)?.name ?? id
 }
 
 function parseInput(raw: string): ParsedInput {
   const t = raw.trim()
-  // partlink:vehicle:seller-001:VEH-001-8405 — vehicle QR produced by VIN Import
+  // partlink:vehicle:seller-001:VEH-001-8405 — vehicle QR from VIN Import
   if (t.toLowerCase().startsWith('partlink:vehicle:')) {
     const segs = t.split(':')
     return { type: 'vehicle', vehicleCode: (segs[3] ?? '').toUpperCase() }
   }
-  // partlink:seller-001:partId:SKU — part QR produced by Add Part
+  // partlink:seller-001:partId:SKU — part QR from Add Part
   if (t.toLowerCase().startsWith('partlink:')) {
     const segs = t.split(':')
     return { type: 'part', sku: (segs[3] ?? '').toUpperCase() }
@@ -79,7 +72,7 @@ function doScan(raw: string): ScanState {
     return { kind: 'found_vehicle', vehicleImport }
   }
 
-  // Part scan (existing behavior)
+  // Part scan — existing behavior
   const part = getSellerInventory(SELLER_ID).find((p) => p.sku === parsed.sku)
   if (!part) {
     return { kind: 'error', message: `Δεν βρέθηκε ανταλλακτικό: ${parsed.sku}` }
@@ -103,7 +96,7 @@ const DEMO_PART_SCANS = [
 ]
 
 const DEMO_VEHICLE_SCANS = [
-  { code: 'VEH-001-8405', label: 'BMW E90 320d 2013', sub: 'Όχημα από VIN Import' },
+  { code: 'VEH-001-8405', label: 'Opel Astra 2010', sub: 'QR αυτοκινήτου' },
 ]
 
 // ─── Shared: order dispatch card ──────────────────────────────────────────────
@@ -237,7 +230,7 @@ function IdleScreen({
         </div>
       </div>
 
-      {/* Demo — vehicles */}
+      {/* Demo — vehicles (VIN Import) */}
       <div>
         <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide mb-2">
           Demo αυτοκίνητα (VIN Import)
@@ -391,64 +384,49 @@ function StockScreen({
 }
 
 // ─── Screen: Found — vehicle ──────────────────────────────────────────────────
+// Shown after scanning a vehicle QR (partlink:vehicle:seller-001:VEH-001-XXXX).
+// One QR per car; seller picks which part was physically removed.
 
 function VehiclePartRow({
   part,
-  onAction,
+  onRemove,
 }: {
   part: GeneratedPart
-  onAction: (action: VehiclePartAction) => void
+  onRemove: () => void
 }) {
   return (
     <div className="px-4 py-4 border-b border-slate-100 last:border-0">
-      <div className="flex items-start justify-between gap-2 mb-2.5">
+      {/* Part info */}
+      <div className="flex items-start justify-between gap-2 mb-3">
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold text-slate-900 leading-tight">{part.partName}</p>
-          <p className="text-xs text-slate-400 mt-0.5">
-            {getCategoryName(part.categoryId)} · €{part.price}
-          </p>
+          <p className="text-xs text-slate-400 mt-0.5">{getCategoryName(part.categoryId)}</p>
         </div>
-        {part.publishToMarketplace && (
-          <span className="flex-shrink-0 text-[11px] font-semibold text-green-700 bg-green-50 border border-green-200 px-2 py-0.5 rounded">
-            Δημοσ.
-          </span>
-        )}
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          <ConditionBadge condition={part.condition} />
+          <span className="text-sm font-semibold text-slate-900 tabular-nums">€{part.price}</span>
+        </div>
       </div>
 
-      <div className="flex gap-1.5">
-        <button
-          type="button"
-          onClick={() => onAction('removed_from_vehicle')}
-          className="flex-1 h-9 text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 active:bg-amber-200 transition-colors"
-        >
-          Βγήκε
-        </button>
-        <button
-          type="button"
-          onClick={() => onAction('added_to_stock')}
-          className="flex-1 h-9 text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 active:bg-blue-200 transition-colors"
-        >
-          Στο stock
-        </button>
-        <button
-          type="button"
-          onClick={() => onAction('sold')}
-          className="flex-1 h-9 text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 active:bg-slate-100 transition-colors"
-        >
-          Πωλήθηκε
-        </button>
-      </div>
+      {/* Single action — no per-part QR label in VIN Import */}
+      <button
+        type="button"
+        onClick={onRemove}
+        className="w-full h-11 text-sm font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-xl hover:bg-amber-100 active:bg-amber-200 transition-colors"
+      >
+        Βγήκε από το αμάξι
+      </button>
     </div>
   )
 }
 
 function VehicleScreen({
   vehicleImport,
-  onPartAction,
+  onPartRemoved,
   onBack,
 }: {
   vehicleImport: VehicleImport
-  onPartAction: (partName: string, action: VehiclePartAction) => void
+  onPartRemoved: (part: GeneratedPart) => void
   onBack: () => void
 }) {
   const [searchQuery, setSearchQuery] = useState('')
@@ -464,7 +442,7 @@ function VehicleScreen({
     <>
       <ScanSuccessBanner message="QR αυτοκινήτου αναγνωρίστηκε" />
 
-      {/* Vehicle summary */}
+      {/* Vehicle card */}
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden mb-4">
         <div className="flex items-center justify-between px-4 py-2.5 bg-slate-50 border-b border-slate-100">
           <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Στοιχεία οχήματος</p>
@@ -491,7 +469,7 @@ function VehicleScreen({
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-4 gap-2 mb-5">
+      <div className="grid grid-cols-4 gap-2 mb-4">
         {[
           { value: parts.length, label: 'Σύνολο' },
           { value: parts.length, label: 'Στο αυτ.' },
@@ -505,9 +483,14 @@ function VehicleScreen({
         ))}
       </div>
 
-      {/* Parts section */}
-      <p className="text-sm font-bold text-slate-900 mb-3">Ποιο ανταλλακτικό βγήκε;</p>
+      {/* Explanation */}
+      <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-3 mb-4">
+        <p className="text-sm text-blue-800">
+          Διάλεξε ποιο ανταλλακτικό βγήκε από το αυτοκίνητο.
+        </p>
+      </div>
 
+      {/* Search */}
       <input
         type="text"
         value={searchQuery}
@@ -516,6 +499,7 @@ function VehicleScreen({
         className="w-full h-10 px-3 text-sm bg-white border border-slate-200 rounded-lg text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent mb-3"
       />
 
+      {/* Parts list */}
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden mb-5">
         {filteredParts.length === 0 ? (
           <div className="px-4 py-6 text-center">
@@ -526,7 +510,7 @@ function VehicleScreen({
             <VehiclePartRow
               key={part.sku}
               part={part}
-              onAction={(action) => onPartAction(part.partName, action)}
+              onRemove={() => onPartRemoved(part)}
             />
           ))
         )}
@@ -654,64 +638,57 @@ function SuccessStockScreen({
   )
 }
 
-// ─── Screen: Success — vehicle part action ────────────────────────────────────
+// ─── Screen: Success — vehicle part removed ───────────────────────────────────
+// Shown after the seller taps "Βγήκε από το αμάξι" for a specific linked part.
 
-function SuccessVehicleScreen({
+function SuccessVehiclePartRemovedScreen({
   vehicleImport,
   partName,
-  action,
+  publishedToMarketplace,
   onReset,
 }: {
   vehicleImport: VehicleImport
   partName: string
-  action: VehiclePartAction
+  publishedToMarketplace: boolean
   onReset: () => void
 }) {
   const { vehicle, vehicleCode } = vehicleImport
-  const actionLabel = VEHICLE_ACTION_LABELS[action]
 
-  const iconBg =
-    action === 'sold' ? 'bg-green-100' :
-    action === 'added_to_stock' ? 'bg-blue-100' :
-    'bg-amber-100'
-
-  const iconColor =
-    action === 'sold' ? 'text-green-600' :
-    action === 'added_to_stock' ? 'text-blue-600' :
-    'text-amber-600'
+  const updates = [
+    { label: 'Ανταλλακτικό', value: 'Εκτός αυτοκινήτου', color: 'text-amber-700' },
+    { label: 'Stock', value: 'Ενημερώθηκε', color: 'text-green-700' },
+    {
+      label: 'Marketplace',
+      value: publishedToMarketplace ? 'Παραμένει διαθέσιμο' : 'Δεν ήταν δημοσιευμένο',
+      color: publishedToMarketplace ? 'text-green-700' : 'text-slate-500',
+    },
+  ]
 
   return (
     <div className="pt-4 text-center">
-      <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 ${iconBg}`}>
-        <svg className={`w-8 h-8 ${iconColor}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+      <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-4">
+        <svg className="w-8 h-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
         </svg>
       </div>
 
-      <h2 className="text-xl font-bold text-slate-900">{actionLabel}</h2>
-      <p className="text-sm text-slate-500 mt-1.5">{partName}</p>
+      <h2 className="text-xl font-bold text-slate-900">Το ανταλλακτικό βγήκε από το αυτοκίνητο</h2>
+      <p className="text-sm font-medium text-slate-700 mt-1.5">{partName}</p>
+      <p className="text-xs text-slate-500 mt-0.5">
+        {vehicle.make} {vehicle.model} {vehicle.year} · {vehicleCode}
+      </p>
 
       <div className="mt-6 bg-white border border-slate-200 rounded-xl overflow-hidden text-left mb-6">
         <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-100">
-          <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Ενημέρωση</p>
+          <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Ενημερώσεις</p>
         </div>
         <div className="divide-y divide-slate-100">
-          <div className="flex items-center justify-between px-4 py-3">
-            <span className="text-sm text-slate-500">Αυτοκίνητο</span>
-            <span className="text-sm font-semibold text-slate-900">{vehicle.make} {vehicle.model} {vehicle.year}</span>
-          </div>
-          <div className="flex items-center justify-between px-4 py-3">
-            <span className="text-sm text-slate-500">Κωδικός οχήματος</span>
-            <span className="text-xs font-mono text-slate-600">{vehicleCode}</span>
-          </div>
-          <div className="flex items-center justify-between px-4 py-3">
-            <span className="text-sm text-slate-500">Ανταλλακτικό</span>
-            <span className="text-sm font-semibold text-slate-900 truncate ml-4 max-w-[160px]">{partName}</span>
-          </div>
-          <div className="flex items-center justify-between px-4 py-3">
-            <span className="text-sm text-slate-500">Ενέργεια</span>
-            <span className={`text-sm font-semibold ${iconColor}`}>{actionLabel}</span>
-          </div>
+          {updates.map((row) => (
+            <div key={row.label} className="flex items-center justify-between px-4 py-3">
+              <span className="text-sm text-slate-600">{row.label}</span>
+              <span className={`text-sm font-medium ${row.color}`}>{row.value}</span>
+            </div>
+          ))}
         </div>
       </div>
 
@@ -816,8 +793,13 @@ export function QRScanScreen() {
       {state.kind === 'found_vehicle' && (
         <VehicleScreen
           vehicleImport={state.vehicleImport}
-          onPartAction={(partName, action) =>
-            setState({ kind: 'success_vehicle', vehicleImport: state.vehicleImport, partName, action })
+          onPartRemoved={(part) =>
+            setState({
+              kind: 'success_vehicle_part_removed',
+              vehicleImport: state.vehicleImport,
+              partName: part.partName,
+              publishedToMarketplace: part.publishToMarketplace,
+            })
           }
           onBack={reset}
         />
@@ -831,11 +813,11 @@ export function QRScanScreen() {
         <SuccessStockScreen part={state.part} action={state.action} onReset={reset} />
       )}
 
-      {state.kind === 'success_vehicle' && (
-        <SuccessVehicleScreen
+      {state.kind === 'success_vehicle_part_removed' && (
+        <SuccessVehiclePartRemovedScreen
           vehicleImport={state.vehicleImport}
           partName={state.partName}
-          action={state.action}
+          publishedToMarketplace={state.publishedToMarketplace}
           onReset={reset}
         />
       )}
