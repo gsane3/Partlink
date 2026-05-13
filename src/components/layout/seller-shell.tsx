@@ -149,7 +149,7 @@ const PAGE_TITLES: Record<string, string> = {
 function getTitle(pathname: string): string {
   if (PAGE_TITLES[pathname]) return PAGE_TITLES[pathname]
   if (pathname.startsWith('/seller/inventory/')) return 'Ανταλλακτικό'
-  if (pathname.startsWith('/seller/orders/')) return 'Παραγγελία'
+  if (pathname.startsWith('/seller/orders/')) return 'Αίτημα'
   return 'Partlink'
 }
 

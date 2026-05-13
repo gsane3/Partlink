@@ -63,7 +63,7 @@ const ADMIN_NAV: NavItem[] = [
     ),
   },
   {
-    label: 'Παραγγελίες',
+    label: 'Αιτήματα',
     href: '/admin/orders',
     icon: (
       <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
@@ -98,7 +98,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/admin/sellers': 'Πωλητές',
   '/admin/buyers': 'Αγοραστές',
   '/admin/listings': 'Αγγελίες',
-  '/admin/orders': 'Παραγγελίες',
+  '/admin/orders': 'Αιτήματα',
   '/admin/disputes': 'Διαφωνίες',
   '/admin/reports': 'Αναφορές',
 }
