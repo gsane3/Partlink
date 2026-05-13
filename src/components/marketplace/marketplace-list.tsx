@@ -5,46 +5,52 @@ import { SearchInput } from '@/components/forms/search-input'
 import { FilterChip } from '@/components/forms/filter-chip'
 import { MarketplacePartCard } from './marketplace-part-card'
 import { getMarketplaceParts } from '@/lib/data/marketplace'
+import { CATEGORIES } from '@/lib/constants'
 import { cn } from '@/lib/utils'
-import type { PartCondition } from '@/types'
+import { scorePartSearch, matchesPartSearch } from '@/lib/search/part-search'
+import type { Part } from '@/types'
+import type { CompatibilityStatus } from '@/components/inventory/vin-import/types'
+
+// ─── Static data (computed once, mock data never changes) ─────────────────────
+
+const ALL_ITEMS = getMarketplaceParts()
+
+const ALL_MAKES = [...new Set(ALL_ITEMS.map(({ part }) => part.vehicle.make))].sort()
+
+const AVAILABLE_CATEGORIES = CATEGORIES.filter((cat) =>
+  ALL_ITEMS.some(({ part }) => part.categoryId === cat.id)
+)
 
 // ─── Filter config ────────────────────────────────────────────────────────────
 
-type CategoryFilter =
-  | 'all' | 'body' | 'lighting' | 'engine' | 'transmission' | 'electrical' | 'other'
-
-type ConditionFilter = 'all' | PartCondition
-
+type PriceFilter = 'with_price' | 'on_request'
 type SortOption = 'default' | 'price_asc' | 'price_desc' | 'newest'
 
-const CATEGORY_FILTERS: { value: CategoryFilter; label: string }[] = [
-  { value: 'all', label: 'Όλα' },
-  { value: 'body', label: 'Αμάξωμα' },
-  { value: 'lighting', label: 'Φωτισμός' },
-  { value: 'engine', label: 'Κινητήρας' },
-  { value: 'transmission', label: 'Σασμάν' },
-  { value: 'electrical', label: 'Ηλεκτρικά' },
-  { value: 'other', label: 'Άλλο' },
+const PRICE_OPTIONS: { value: PriceFilter | null; label: string }[] = [
+  { value: null,          label: 'Όλες τιμές' },
+  { value: 'with_price',  label: 'Με τιμή' },
+  { value: 'on_request',  label: 'Κατόπιν ζήτησης' },
 ]
 
-const CONDITION_FILTERS: { value: ConditionFilter; label: string }[] = [
-  { value: 'all', label: 'Όλες' },
-  { value: 'excellent', label: 'Άριστο' },
-  { value: 'very_good', label: 'Πολύ καλό' },
-  { value: 'good', label: 'Καλό' },
-  { value: 'tested', label: 'Ελεγμένο' },
+const COMPAT_OPTIONS: { value: CompatibilityStatus | null; label: string }[] = [
+  { value: null,              label: 'Όλα' },
+  { value: 'donor_only',      label: 'Μόνο donor' },
+  { value: 'oem_verified',    label: 'Με OEM' },
+  { value: 'seller_confirmed', label: 'Επιβεβαιωμένα' },
 ]
 
 const SORT_OPTIONS: { value: SortOption; label: string }[] = [
-  { value: 'default', label: 'Προτεινόμενα' },
-  { value: 'price_asc', label: 'Τιμή αύξουσα' },
+  { value: 'default',    label: 'Προτεινόμενα' },
+  { value: 'price_asc',  label: 'Τιμή αύξουσα' },
   { value: 'price_desc', label: 'Τιμή φθίνουσα' },
-  { value: 'newest', label: 'Νεότερα' },
+  { value: 'newest',     label: 'Νεότερα' },
 ]
 
-// These are the "main" categories explicitly listed in filters.
-// Anything else falls under "Άλλο".
-const MAIN_CATEGORY_IDS = new Set(['body', 'lighting', 'engine', 'transmission', 'electrical'])
+// MVP default: all parts are donor_only until enrichment data is added
+function getPartCompat(part: Part): CompatibilityStatus {
+  void part
+  return 'donor_only'
+}
 
 // ─── Chip row ─────────────────────────────────────────────────────────────────
 
@@ -60,89 +66,162 @@ function ChipRow({ children }: { children: React.ReactNode }) {
 
 export function MarketplaceList() {
   const [search, setSearch] = useState('')
-  const [category, setCategory] = useState<CategoryFilter>('all')
-  const [condition, setCondition] = useState<ConditionFilter>('all')
+  const [category, setCategory] = useState<string | null>(null)
+  const [make, setMake] = useState<string | null>(null)
+  const [price, setPrice] = useState<PriceFilter | null>(null)
+  const [compat, setCompat] = useState<CompatibilityStatus | null>(null)
   const [sort, setSort] = useState<SortOption>('default')
 
-  const allItems = getMarketplaceParts()
+  const clearAll = () => {
+    setSearch('')
+    setCategory(null)
+    setMake(null)
+    setPrice(null)
+    setCompat(null)
+    setSort('default')
+  }
 
-  // Filter
-  const filtered = allItems.filter(({ part }) => {
-    // Category
-    if (category !== 'all') {
-      if (category === 'other') {
-        if (MAIN_CATEGORY_IDS.has(part.categoryId)) return false
-      } else {
-        if (part.categoryId !== category) return false
-      }
-    }
-    // Condition
-    if (condition !== 'all' && part.condition !== condition) return false
-    // Search
-    if (search.trim()) {
-      const q = search.toLowerCase().trim()
-      const matches =
-        part.partName.toLowerCase().includes(q) ||
-        part.sku.toLowerCase().includes(q) ||
-        part.vehicle.make.toLowerCase().includes(q) ||
-        part.vehicle.model.toLowerCase().includes(q) ||
-        part.categoryId.toLowerCase().includes(q)
-      if (!matches) return false
+  const activeSearch = search.trim()
+
+  // ─── Filter ──────────────────────────────────────────────────────────────────
+  const filtered = ALL_ITEMS.filter(({ part, seller }) => {
+    if (category && part.categoryId !== category) return false
+    if (make && part.vehicle.make !== make) return false
+    if (price === 'with_price' && !(part.price > 0)) return false
+    if (price === 'on_request' && part.price > 0) return false
+    if (compat && getPartCompat(part) !== compat) return false
+    if (activeSearch) {
+      return matchesPartSearch(part, activeSearch, {
+        sellerName: seller?.businessName,
+        sellerCity: seller?.city,
+      })
     }
     return true
   })
 
-  // Sort
+  // ─── Sort ────────────────────────────────────────────────────────────────────
+  // When search is active, relevance score takes priority over the selected sort.
   const sorted = [...filtered].sort((a, b) => {
+    if (activeSearch) {
+      const opts = { sellerName: a.seller?.businessName, sellerCity: a.seller?.city }
+      const optsB = { sellerName: b.seller?.businessName, sellerCity: b.seller?.city }
+      const diff = scorePartSearch(b.part, activeSearch, optsB) - scorePartSearch(a.part, activeSearch, opts)
+      if (diff !== 0) return diff
+    }
     if (sort === 'price_asc') return a.part.price - b.part.price
     if (sort === 'price_desc') return b.part.price - a.part.price
     if (sort === 'newest') return b.part.createdAt.localeCompare(a.part.createdAt)
-    return 0 // default: keep original order
+    return 0
   })
 
-  const hasActiveFilter = category !== 'all' || condition !== 'all' || search.trim()
+  const hasActiveFilter = !!(search.trim() || category || make || price || compat)
 
   return (
     <div className="space-y-4">
       {/* Search */}
       <SearchInput
-        placeholder="Αναζήτηση ανταλλακτικού, SKU, μοντέλο..."
+        placeholder="π.χ. καθρέφτης BMW E90, φανάρι Astra H, PL-001-0001"
         value={search}
         onChange={(e) => setSearch(e.target.value)}
         onClear={() => setSearch('')}
       />
 
-      {/* Category chips */}
+      {/* Compatibility safety notice */}
+      <div className="flex items-start gap-2.5 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3">
+        <svg className="w-4 h-4 text-slate-400 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <div>
+          <p className="text-xs font-semibold text-slate-700 mb-0.5">Έλεγχος συμβατότητας</p>
+          <p className="text-xs text-slate-500 leading-relaxed">
+            Η συμβατότητα πρέπει να επιβεβαιώνεται με OEM, VIN ή τον πωλητή πριν την αγορά.
+          </p>
+        </div>
+      </div>
+
+      {/* Category filter */}
       <ChipRow>
-        {CATEGORY_FILTERS.map((opt) => (
+        <FilterChip
+          label="Όλες κατ."
+          selected={category === null}
+          onClick={() => setCategory(null)}
+        />
+        {AVAILABLE_CATEGORIES.map((cat) => (
           <FilterChip
-            key={opt.value}
-            label={opt.label}
-            selected={category === opt.value}
-            onClick={() => setCategory(opt.value)}
+            key={cat.id}
+            label={cat.name}
+            selected={category === cat.id}
+            onClick={() => setCategory(cat.id)}
           />
         ))}
       </ChipRow>
 
-      {/* Condition chips */}
+      {/* Make filter */}
       <ChipRow>
-        {CONDITION_FILTERS.map((opt) => (
+        <FilterChip
+          label="Όλες μάρκες"
+          selected={make === null}
+          onClick={() => setMake(null)}
+        />
+        {ALL_MAKES.map((m) => (
           <FilterChip
-            key={opt.value}
-            label={opt.label}
-            selected={condition === opt.value}
-            onClick={() => setCondition(opt.value)}
+            key={m}
+            label={m}
+            selected={make === m}
+            onClick={() => setMake(m)}
           />
         ))}
       </ChipRow>
 
-      {/* Sort + results count */}
+      {/* Price filter */}
+      <ChipRow>
+        {PRICE_OPTIONS.map((opt) => (
+          <FilterChip
+            key={opt.value ?? '__all_price__'}
+            label={opt.label}
+            selected={price === opt.value}
+            onClick={() => setPrice(opt.value)}
+          />
+        ))}
+      </ChipRow>
+
+      {/* Compatibility filter */}
+      <ChipRow>
+        {COMPAT_OPTIONS.map((opt) => (
+          <FilterChip
+            key={opt.value ?? '__all_compat__'}
+            label={opt.label}
+            selected={compat === opt.value}
+            onClick={() => setCompat(opt.value)}
+          />
+        ))}
+      </ChipRow>
+
+      {/* Results count + sort */}
       <div className="flex items-center justify-between gap-3">
-        <p className="text-xs text-slate-500">
-          {sorted.length === allItems.length
-            ? `${allItems.length} ανταλλακτικά`
-            : `${sorted.length} από ${allItems.length}`}
-        </p>
+        <div className="flex items-center gap-3 min-w-0">
+          <p className="text-xs text-slate-500 shrink-0">
+            {activeSearch
+              ? `${sorted.length} αποτελέσματα`
+              : sorted.length === ALL_ITEMS.length
+                ? `${ALL_ITEMS.length} ανταλλακτικά`
+                : `${sorted.length} από ${ALL_ITEMS.length}`}
+          </p>
+          {activeSearch && sorted.length > 0 && (
+            <p className="text-xs text-slate-400 truncate">
+              για <span className="font-medium text-slate-600">&ldquo;{activeSearch}&rdquo;</span>
+            </p>
+          )}
+          {hasActiveFilter && (
+            <button
+              type="button"
+              onClick={clearAll}
+              className="text-xs font-medium text-blue-600 hover:text-blue-700 transition-colors shrink-0"
+            >
+              Καθαρισμός
+            </button>
+          )}
+        </div>
         <select
           value={sort}
           onChange={(e) => setSort(e.target.value as SortOption)}
@@ -162,13 +241,14 @@ export function MarketplaceList() {
 
       {/* Results grid */}
       {sorted.length === 0 ? (
-        <div className="bg-white border border-dashed border-slate-300 rounded-xl py-12 text-center">
-          <p className="text-sm text-slate-500 mb-2">Δεν βρέθηκαν ανταλλακτικά</p>
+        <div className="bg-white border border-dashed border-slate-300 rounded-xl py-14 text-center">
+          <p className="text-sm font-medium text-slate-600 mb-1">Δεν βρέθηκαν ανταλλακτικά</p>
+          <p className="text-xs text-slate-400 mb-4">Δοκίμασε διαφορετικά φίλτρα</p>
           {hasActiveFilter && (
             <button
               type="button"
-              onClick={() => { setSearch(''); setCategory('all'); setCondition('all') }}
-              className="text-xs font-medium text-blue-600 hover:text-blue-700"
+              onClick={clearAll}
+              className="text-sm font-medium text-blue-600 hover:text-blue-700 transition-colors"
             >
               Καθαρισμός φίλτρων
             </button>
@@ -177,7 +257,12 @@ export function MarketplaceList() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {sorted.map(({ part, seller }) => (
-            <MarketplacePartCard key={part.id} part={part} seller={seller} />
+            <MarketplacePartCard
+              key={part.id}
+              part={part}
+              seller={seller}
+              compat={getPartCompat(part)}
+            />
           ))}
         </div>
       )}
