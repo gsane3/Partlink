@@ -1,39 +1,79 @@
 'use client'
 
 import { useState } from 'react'
-import { getCurrentSellerId } from '@/lib/data/seller'
-import { getSellerChats } from '@/lib/data/chats'
-import { SearchInput } from '@/components/forms/search-input'
+import Link from 'next/link'
+import { Badge } from '@/components/ui/badge'
 import { FilterChip } from '@/components/forms/filter-chip'
-import { ChatThreadList } from '@/components/chats/chat-thread-list'
-import { ChatPanel } from '@/components/chats/chat-panel'
-import { cn, formatOrderNumber } from '@/lib/utils'
-import type { ChatThread } from '@/lib/data/chats'
+import { PageContainer } from '@/components/layout/page-container'
+import { formatDate } from '@/lib/utils'
+import { ROUTES } from '@/lib/routes'
+import { getRequestConversations } from '@/lib/requests/conversations'
+import type { RequestConversation } from '@/lib/requests/conversations'
+import { SELLER_STATUS_CONFIG } from '@/lib/requests/status'
 
 // ─── Filter config ────────────────────────────────────────────────────────────
 
-type Filter = 'all' | 'unread' | 'orders' | 'marketplace' | 'closed'
+type SellerFilter = 'all' | 'no_reply' | 'replied' | 'with_price'
 
-const FILTER_OPTIONS: { value: Filter; label: string }[] = [
-  { value: 'all', label: 'Όλες' },
-  { value: 'unread', label: 'Αδιάβαστες' },
-  { value: 'orders', label: 'Παραγγελίες' },
-  { value: 'marketplace', label: 'Marketplace' },
-  { value: 'closed', label: 'Κλειστές' },
+const FILTER_OPTIONS: { value: SellerFilter; label: string }[] = [
+  { value: 'all',       label: 'Όλα' },
+  { value: 'no_reply',  label: 'Χωρίς απάντηση' },
+  { value: 'replied',   label: 'Με απάντηση' },
+  { value: 'with_price', label: 'Με τιμή' },
 ]
 
-// ─── Empty panel state ────────────────────────────────────────────────────────
+function matchesFilter(conv: RequestConversation, f: SellerFilter): boolean {
+  if (f === 'all')        return true
+  if (f === 'no_reply')   return !conv.hasSellerReply && !conv.hasPriceSent
+  if (f === 'replied')    return conv.hasSellerReply
+  if (f === 'with_price') return conv.hasPriceSent
+  return true
+}
 
-function EmptyPanel() {
+// ─── Conversation card ────────────────────────────────────────────────────────
+
+function ConversationCard({ conv }: { conv: RequestConversation }) {
+  const { label: statusLabel, variant: statusVariant } = SELLER_STATUS_CONFIG[conv.status]
+
   return (
-    <div className="flex flex-col items-center justify-center h-full text-center px-8">
-      <div className="w-14 h-14 rounded-full bg-slate-100 flex items-center justify-center mb-3">
-        <svg className="w-7 h-7 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-        </svg>
+    <div className="bg-white border border-slate-200 rounded-xl px-4 py-4">
+      {/* Top row */}
+      <div className="flex items-start justify-between gap-2 mb-1.5">
+        <span className="text-sm font-semibold text-slate-900 truncate">{conv.buyerCompany}</span>
+        <span className="text-xs text-slate-400 flex-shrink-0">{formatDate(conv.lastMessageAt)}</span>
       </div>
-      <p className="text-sm font-medium text-slate-600">Επίλεξε συνομιλία</p>
-      <p className="text-xs text-slate-400 mt-1">Επίλεξε μια συνομιλία από τη λίστα για να τη δεις</p>
+
+      {/* Part info */}
+      <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
+        <span className="text-xs text-slate-700 font-medium">{conv.partName}</span>
+        <span className="text-slate-300">·</span>
+        <span className="text-xs text-slate-400 font-mono">{conv.partSku}</span>
+      </div>
+
+      {/* Last message preview */}
+      <p className="text-xs text-slate-500 italic line-clamp-1 mb-2">&ldquo;{conv.lastMessage}&rdquo;</p>
+
+      {/* Badges row */}
+      <div className="flex items-center gap-1.5 flex-wrap mb-3">
+        <Badge variant={statusVariant}>{statusLabel}</Badge>
+        {conv.hasPriceSent && (
+          <Badge variant="success">Τιμή στάλθηκε</Badge>
+        )}
+        {conv.hasSellerReply && (
+          <Badge variant="brand">Απάντηση</Badge>
+        )}
+      </div>
+
+      {/* CTA */}
+      <Link
+        href={ROUTES.SELLER.ORDER_DETAIL(conv.requestId)}
+        className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-700 transition-colors"
+      >
+        Άνοιγμα αιτήματος
+        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+        </svg>
+      </Link>
     </div>
   )
 }
@@ -41,94 +81,56 @@ function EmptyPanel() {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function SellerChatsPage() {
-  const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [search, setSearch] = useState('')
-  const [filter, setFilter] = useState<Filter>('all')
+  const [activeFilter, setActiveFilter] = useState<SellerFilter>('all')
 
-  const sellerId = getCurrentSellerId()
-  const allThreads = getSellerChats(sellerId)
-  const totalUnread = allThreads.reduce((sum, t) => sum + t.unreadCountSeller, 0)
-
-  const filtered = allThreads.filter((t: ChatThread) => {
-    if (filter === 'unread' && t.unreadCountSeller === 0) return false
-    if (filter === 'orders' && t.source !== 'order') return false
-    if (filter === 'marketplace' && t.source !== 'marketplace') return false
-    if (filter === 'closed' && t.status !== 'closed') return false
-    if (search.trim()) {
-      const q = search.toLowerCase()
-      const matchesBuyer = t.buyerName.toLowerCase().includes(q)
-      const matchesPart = t.partName.toLowerCase().includes(q)
-      const matchesOrder = t.orderId ? formatOrderNumber(t.orderId).includes(q) : false
-      if (!matchesBuyer && !matchesPart && !matchesOrder) return false
-    }
-    return true
-  })
-
-  const selectedThread = selectedId ? allThreads.find((t) => t.id === selectedId) ?? null : null
+  const allConversations = getRequestConversations()
+  const filtered = allConversations.filter((c) => matchesFilter(c, activeFilter))
 
   return (
-    // Full-height layout: 100dvh minus topbar (3.5rem) minus mobile nav (4rem)
-    <div className="flex h-[calc(100dvh-7.5rem)] lg:h-[calc(100dvh-3.5rem)] overflow-hidden">
-      {/* Thread list — hidden on mobile when chat is open */}
-      <div className={cn(
-        'flex flex-col w-full lg:w-72 lg:flex-shrink-0 lg:border-r lg:border-slate-200 overflow-hidden',
-        selectedThread ? 'hidden lg:flex' : 'flex'
-      )}>
-        {/* List header */}
-        <div className="px-4 pt-4 pb-3 border-b border-slate-200 bg-white flex-shrink-0">
-          <div className="mb-3">
-            <h1 className="text-lg font-semibold text-slate-900">Συνομιλίες</h1>
-            {totalUnread > 0 && (
-              <p className="text-xs text-slate-500 mt-0.5">{totalUnread} αδιάβαστα</p>
-            )}
-          </div>
-          <SearchInput
-            placeholder="Αγοραστής, ανταλλακτικό, παραγγελία..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            onClear={() => setSearch('')}
-            className="mb-3"
-          />
-          <div className="flex gap-1.5 overflow-x-auto pb-0.5 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-            {FILTER_OPTIONS.map((opt) => (
-              <FilterChip
-                key={opt.value}
-                label={opt.label}
-                selected={filter === opt.value}
-                onClick={() => setFilter(opt.value)}
-              />
-            ))}
-          </div>
-        </div>
-
-        {/* Scrollable list */}
-        <div className="flex-1 overflow-y-auto bg-white">
-          <ChatThreadList
-            threads={filtered}
-            selectedId={selectedId}
-            onSelect={setSelectedId}
-            role="seller"
-          />
-        </div>
+    <PageContainer narrow className="pb-24 lg:pb-10">
+      {/* Header */}
+      <div className="mb-6">
+        <h1 className="text-xl font-bold text-slate-900 mb-1">Μηνύματα</h1>
+        <p className="text-sm text-slate-500">Συζητήσεις με αγοραστές για αιτήματα ανταλλακτικών.</p>
       </div>
 
-      {/* Chat panel — hidden on mobile when no chat selected */}
-      <div className={cn(
-        'flex-1 overflow-hidden',
-        selectedThread ? 'flex flex-col' : 'hidden lg:flex lg:flex-col'
-      )}>
-        {selectedThread ? (
-          <ChatPanel
-            key={selectedThread.id}
-            thread={selectedThread}
-            currentUserId={sellerId}
-            currentRole="seller"
-            onBack={() => setSelectedId(null)}
+      {/* Filter chips */}
+      <div className="flex gap-1.5 overflow-x-auto pb-0.5 mb-5 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+        {FILTER_OPTIONS.map((opt) => (
+          <FilterChip
+            key={opt.value}
+            label={opt.label}
+            selected={activeFilter === opt.value}
+            onClick={() => setActiveFilter(opt.value)}
           />
-        ) : (
-          <EmptyPanel />
-        )}
+        ))}
       </div>
-    </div>
+
+      {/* Count */}
+      <p className="text-xs text-slate-500 mb-3">
+        {filtered.length === allConversations.length
+          ? `${allConversations.length} συζητήσεις`
+          : `${filtered.length} από ${allConversations.length} συζητήσεις`}
+      </p>
+
+      {/* List or empty state */}
+      {filtered.length === 0 ? (
+        <div className="bg-white border border-dashed border-slate-300 rounded-xl py-14 text-center">
+          <p className="text-sm font-medium text-slate-600 mb-1">Δεν υπάρχουν μηνύματα</p>
+          <p className="text-xs text-slate-400 mb-4">Οι συζητήσεις από αιτήματα θα εμφανίζονται εδώ.</p>
+          {activeFilter !== 'all' && (
+            <button type="button" onClick={() => setActiveFilter('all')} className="text-xs font-medium text-blue-600 hover:text-blue-700">
+              Καθαρισμός φίλτρου
+            </button>
+          )}
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {filtered.map((conv) => (
+            <ConversationCard key={conv.id} conv={conv} />
+          ))}
+        </div>
+      )}
+    </PageContainer>
   )
 }

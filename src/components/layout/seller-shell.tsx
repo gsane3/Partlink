@@ -39,7 +39,7 @@ const SELLER_NAV: NavItem[] = [
     ),
   },
   {
-    label: 'Συνομιλίες',
+    label: 'Μηνύματα',
     href: '/seller/chats',
     icon: (
       <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
@@ -142,7 +142,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/seller/inventory/vin-import': 'Εισαγωγή με VIN',
   '/seller/inventory/scan': 'Σκάναρε QR',
   '/seller/orders': 'Αιτήματα',
-  '/seller/chats': 'Συνομιλίες',
+  '/seller/chats': 'Μηνύματα',
   '/seller/settings': 'Ρυθμίσεις',
 }
 
