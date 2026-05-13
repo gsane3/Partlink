@@ -3,6 +3,8 @@ import { PartStatusBadge } from './part-status-badge'
 import { ConditionBadge } from './condition-badge'
 import { MarketplaceVisibilityBadge } from './marketplace-visibility-badge'
 import { QRStatusBadge } from './qr-status-badge'
+import { ReadinessBadge } from './marketplace-readiness-badge'
+import { getMarketplaceReadiness } from '@/lib/inventory/readiness'
 import { formatPrice } from '@/lib/utils'
 import { CATEGORIES } from '@/lib/constants'
 import type { Part } from '@/types'
@@ -83,6 +85,7 @@ function SearchRow({ part, href }: { part: Part; href: string }) {
 // Layout: [photo 12×12] [name+price+actions / vehicle+category / SKU+qty / all badges]
 
 function FullRow({ part, actions }: { part: Part; actions?: ReactNode }) {
+  const readiness = getMarketplaceReadiness(part)
   return (
     <div className="flex items-start gap-3 px-4 py-4 border-b border-slate-100 last:border-0 hover:bg-slate-50 transition-colors">
       <PhotoPlaceholder />
@@ -93,7 +96,7 @@ function FullRow({ part, actions }: { part: Part; actions?: ReactNode }) {
           </p>
           <div className="flex items-center gap-1 flex-shrink-0">
             <p className="text-sm font-bold text-slate-900 tabular-nums">
-              {formatPrice(part.price)}
+              {part.price > 0 ? formatPrice(part.price) : <span className="text-slate-400 font-normal italic text-xs">Κατ. ζήτ.</span>}
             </p>
             {actions}
           </div>
@@ -114,7 +117,13 @@ function FullRow({ part, actions }: { part: Part; actions?: ReactNode }) {
           <ConditionBadge condition={part.condition} />
           <MarketplaceVisibilityBadge isPublished={part.isPublished} />
           <QRStatusBadge printed={!!part.qrCodeId} />
+          <ReadinessBadge readiness={readiness} />
         </div>
+        {readiness.hints.length > 0 && (
+          <p className="text-[11px] text-slate-400 mt-1">
+            Χρειάζεται: {readiness.hints.slice(0, 2).join(', ')}
+          </p>
+        )}
       </div>
     </div>
   )

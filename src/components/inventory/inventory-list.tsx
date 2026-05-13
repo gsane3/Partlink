@@ -8,6 +8,8 @@ import { EmptyState } from '@/components/layout/empty-state'
 import { PartRow } from './part-row'
 import { CATEGORIES, PART_STATUS_LABELS } from '@/lib/constants'
 import { ROUTES } from '@/lib/routes'
+import { getMarketplaceReadiness } from '@/lib/inventory/readiness'
+import type { ReadinessLevel } from '@/lib/inventory/readiness'
 import type { Part, PartStatus } from '@/types'
 
 // ─── Filter types ────────────────────────────────────────────────────────────
@@ -18,6 +20,7 @@ interface Filters {
   category: string | null
   isPublished: boolean | null
   hasQR: boolean | null
+  readiness: ReadinessLevel | null
 }
 
 const EMPTY: Filters = {
@@ -26,6 +29,7 @@ const EMPTY: Filters = {
   category: null,
   isPublished: null,
   hasQR: null,
+  readiness: null,
 }
 
 const STATUS_OPTIONS: { value: PartStatus | null; label: string }[] = [
@@ -36,8 +40,15 @@ const STATUS_OPTIONS: { value: PartStatus | null; label: string }[] = [
   { value: 'draft', label: PART_STATUS_LABELS.draft },
 ]
 
+const READINESS_OPTIONS: { value: ReadinessLevel | null; label: string }[] = [
+  { value: null,         label: 'Όλα' },
+  { value: 'ready',      label: 'Έτοιμα' },
+  { value: 'basic',      label: 'Βασικά' },
+  { value: 'needs_work', label: 'Θέλουν δουλειά' },
+]
+
 function hasAnyFilter(f: Filters) {
-  return !!(f.search || f.status || f.category || f.isPublished !== null || f.hasQR !== null)
+  return !!(f.search || f.status || f.category || f.isPublished !== null || f.hasQR !== null || f.readiness !== null)
 }
 
 function applyFilters(parts: Part[], f: Filters): Part[] {
@@ -55,6 +66,7 @@ function applyFilters(parts: Part[], f: Filters): Part[] {
     if (f.category && p.categoryId !== f.category) return false
     if (f.isPublished !== null && p.isPublished !== f.isPublished) return false
     if (f.hasQR !== null && !!p.qrCodeId !== f.hasQR) return false
+    if (f.readiness !== null && getMarketplaceReadiness(p).level !== f.readiness) return false
     return true
   })
 }
@@ -203,6 +215,18 @@ export function InventoryList({ parts }: { parts: Part[] }) {
             label={cat.name}
             selected={filters.category === cat.id}
             onClick={() => set('category', cat.id)}
+          />
+        ))}
+      </ChipRow>
+
+      {/* Readiness chips */}
+      <ChipRow>
+        {READINESS_OPTIONS.map((opt) => (
+          <FilterChip
+            key={opt.value ?? '__all_readiness__'}
+            label={opt.label}
+            selected={filters.readiness === opt.value}
+            onClick={() => set('readiness', opt.value)}
           />
         ))}
       </ChipRow>
