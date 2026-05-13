@@ -140,7 +140,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/seller/inventory/add': 'Πρόσθεσε ανταλλακτικό',
   '/seller/inventory/vin-import': 'Εισαγωγή με VIN',
   '/seller/inventory/scan': 'Σκάναρε QR',
-  '/seller/orders': 'Παραγγελίες',
+  '/seller/orders': 'Αιτήματα',
   '/seller/chats': 'Συνομιλίες',
   '/seller/settings': 'Ρυθμίσεις',
 }
@@ -188,7 +188,7 @@ export function SellerShell({ children }: { children: ReactNode }) {
 
       <MobileBottomNav items={SELLER_MOBILE_NAV} />
       {!(pathname.startsWith('/seller/inventory/') && pathname !== '/seller/inventory') &&
-        !(pathname.startsWith('/seller/orders/') && pathname !== '/seller/orders') &&
+        !pathname.startsWith('/seller/orders') &&
         !pathname.startsWith('/seller/chats') && (
         <MobileFAB actions={SELLER_FAB_ACTIONS} />
       )}
