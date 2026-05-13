@@ -5,15 +5,64 @@ import Link from 'next/link'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ConditionBadge } from '@/components/inventory/condition-badge'
-import { CATEGORIES } from '@/lib/constants'
+import { CATEGORIES, CONDITION_LABELS } from '@/lib/constants'
 import { ROUTES } from '@/lib/routes'
-import { formatPrice } from '@/lib/utils'
-import { getMarketplacePartById } from '@/lib/data/marketplace'
-import { cn } from '@/lib/utils'
+import { formatPrice, cn } from '@/lib/utils'
+import { findPartDetail } from '@/lib/mock-data/part-detail'
+import { mockParts } from '@/lib/mock-data/parts'
+import { mockSellers } from '@/lib/mock-data/sellers'
+import type { CompatibilityStatus } from '@/components/inventory/vin-import/types'
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function getCategoryName(id: string): string {
   return CATEGORIES.find((c) => c.id === id)?.name ?? id
 }
+
+function maskVin(vin: string): string {
+  if (!vin || vin.length < 8) return vin
+  return vin.slice(0, 4) + '·'.repeat(vin.length - 7) + vin.slice(-3)
+}
+
+// ─── Compatibility config ─────────────────────────────────────────────────────
+
+type CompatConfig = {
+  borderClass: string
+  bgClass: string
+  titleClass: string
+  textClass: string
+  title: string
+  text: string
+}
+
+const COMPAT_CONFIG: Record<CompatibilityStatus, CompatConfig> = {
+  donor_only: {
+    borderClass: 'border-amber-200',
+    bgClass:     'bg-amber-50',
+    titleClass:  'text-amber-900',
+    textClass:   'text-amber-800',
+    title: 'Συμβατότητα: Μόνο από το donor όχημα',
+    text:  'Για άλλα μοντέλα, επιβεβαίωσε με OEM ή με τον πωλητή πριν την αγορά.',
+  },
+  oem_verified: {
+    borderClass: 'border-blue-200',
+    bgClass:     'bg-blue-50',
+    titleClass:  'text-blue-900',
+    textClass:   'text-blue-800',
+    title: 'Συμβατότητα βάσει OEM',
+    text:  'Έχει καταχωρηθεί εργοστασιακός κωδικός. Επιβεβαίωσε ότι ταιριάζει με το δικό σου όχημα.',
+  },
+  seller_confirmed: {
+    borderClass: 'border-green-200',
+    bgClass:     'bg-green-50',
+    titleClass:  'text-green-900',
+    textClass:   'text-green-800',
+    title: 'Συμβατότητα επιβεβαιωμένη από πωλητή',
+    text:  'Ο πωλητής έχει δηλώσει συμβατά μοντέλα. Επιβεβαίωσε λεπτομέρειες πριν την αγορά.',
+  },
+}
+
+// ─── Section card ─────────────────────────────────────────────────────────────
 
 function InfoCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -35,33 +84,82 @@ function InfoRow({ label, children }: { label: string; children: React.ReactNode
   )
 }
 
-type RequestState = 'idle' | 'sent'
+// ─── Not found ────────────────────────────────────────────────────────────────
 
-interface MarketplaceDetailProps {
-  partId: string
+function NotFound() {
+  return (
+    <div className="max-w-sm mx-auto px-4 py-16 text-center">
+      <div className="w-14 h-14 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-4">
+        <svg className="w-6 h-6 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+      </div>
+      <h2 className="text-lg font-semibold text-slate-900 mb-1">Το ανταλλακτικό δεν βρέθηκε</h2>
+      <p className="text-sm text-slate-500 mb-6">Μπορεί να μην είναι πλέον διαθέσιμο.</p>
+      <Link
+        href={ROUTES.MARKETPLACE}
+        className="inline-flex items-center gap-1.5 text-sm font-medium text-blue-600 hover:text-blue-700 transition-colors"
+      >
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+        </svg>
+        Επιστροφή στο Marketplace
+      </Link>
+    </div>
+  )
 }
 
-export function MarketplaceDetail({ partId }: MarketplaceDetailProps) {
-  const [requestState, setRequestState] = useState<RequestState>('idle')
-  const result = getMarketplacePartById(partId)
+// ─── Main component ───────────────────────────────────────────────────────────
 
-  if (!result) {
-    return (
-      <div className="max-w-2xl mx-auto px-4 py-16 text-center">
-        <p className="text-sm text-slate-500 mb-3">Το ανταλλακτικό δεν βρέθηκε ή δεν είναι διαθέσιμο.</p>
-        <Link href={ROUTES.MARKETPLACE} className="text-sm font-medium text-blue-600 hover:text-blue-700">
-          ← Επιστροφή στο Marketplace
-        </Link>
-      </div>
-    )
+type ToastState = 'idle' | 'request' | 'message'
+
+export function MarketplaceDetail({ partId }: { partId: string }) {
+  const [toast, setToast] = useState<ToastState>('idle')
+
+  const partInfo = findPartDetail(partId)
+
+  // Seller lookup for regular parts
+  const sourcePart = mockParts.find((p) => p.id === partId || p.sku === partId)
+  const seller = sourcePart
+    ? mockSellers.find((s) => s.id === sourcePart.sellerId)
+    : undefined
+
+  // Compatibility — default to donor_only since PartInfo does not carry compat data.
+  // When OEM enrichment is added to PartInfo, update this.
+  const compatStatus: CompatibilityStatus = 'donor_only'
+  const compat = COMPAT_CONFIG[compatStatus]
+
+  if (!partInfo) return <NotFound />
+
+  const hasPrice = partInfo.price > 0
+  const ctaLabel = hasPrice ? 'Ζήτηση για αγορά' : 'Ζήτα τιμή'
+
+  const handleRequest = () => {
+    setToast('request')
+    setTimeout(() => setToast('idle'), 3000)
   }
 
-  const { part, seller } = result
+  const handleMessage = () => {
+    setToast('message')
+    setTimeout(() => setToast('idle'), 3000)
+  }
 
   return (
     <>
-      {/* Scrollable content — pb clears sticky bottom bar */}
-      <div className="max-w-2xl mx-auto px-4 py-6 pb-28">
+      {/* Toast */}
+      {toast !== 'idle' && (
+        <div className="fixed top-16 left-0 right-0 z-40 flex justify-center px-4 pt-3 pointer-events-none">
+          <div className="bg-green-600 text-white text-sm font-medium rounded-xl px-5 py-3 shadow-lg">
+            {toast === 'request'
+              ? 'Το αίτημα στάλθηκε για το demo.'
+              : 'Το μήνυμα άνοιξε για το demo.'}
+          </div>
+        </div>
+      )}
+
+      {/* Scrollable content */}
+      <div className="max-w-2xl mx-auto px-4 pt-6 pb-32">
+
         {/* Back link */}
         <Link
           href={ROUTES.MARKETPLACE}
@@ -73,148 +171,264 @@ export function MarketplaceDetail({ partId }: MarketplaceDetailProps) {
           Marketplace
         </Link>
 
-        {/* Request success banner */}
-        {requestState === 'sent' && (
-          <div className="flex items-center gap-2.5 bg-green-50 border border-green-200 rounded-xl px-4 py-3 mb-5">
-            <svg className="w-4 h-4 text-green-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-            </svg>
-            <p className="text-sm font-medium text-green-800">Το αίτημα στάλθηκε στον πωλητή</p>
+        {/* ── Hero ── */}
+        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden mb-4">
+          {/* Photo area */}
+          <div
+            className="w-full bg-slate-100 flex items-center justify-center"
+            style={{ aspectRatio: '16/9' }}
+          >
+            <div className="text-center">
+              <svg className="w-14 h-14 text-slate-300 mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+              <p className="text-xs text-slate-400">Φωτογραφία μη διαθέσιμη</p>
+            </div>
           </div>
-        )}
 
-        <div className="space-y-4">
-          {/* Part header */}
-          <div className="bg-white border border-slate-200 rounded-xl p-5">
+          {/* Title + price */}
+          <div className="px-5 pt-4 pb-5">
             <div className="flex items-start justify-between gap-3 mb-3">
               <h1 className="text-xl font-bold text-slate-900 leading-snug flex-1">
-                {part.partName}
+                {partInfo.partName}
               </h1>
-              <p className="text-2xl font-bold text-slate-900 flex-shrink-0 tabular-nums">
-                {formatPrice(part.price)}
-              </p>
+              <div className="flex-shrink-0 text-right">
+                {hasPrice ? (
+                  <p className="text-2xl font-bold text-slate-900 tabular-nums">
+                    {formatPrice(partInfo.price)}
+                  </p>
+                ) : (
+                  <p className="text-lg font-semibold text-slate-600 italic">Κατόπιν ζήτησης</p>
+                )}
+              </div>
             </div>
+
             <p className="text-sm text-slate-500 mb-3">
-              {part.vehicle.make} {part.vehicle.model} {part.vehicle.year}
+              {partInfo.donorVehicle
+                ? `${partInfo.donorVehicle.make} ${partInfo.donorVehicle.model} ${partInfo.donorVehicle.year}`
+                : getCategoryName(partInfo.categoryId)}
             </p>
-            <div className="flex flex-wrap gap-1.5">
+
+            <div className="flex flex-wrap gap-1.5 mb-4">
               <Badge variant="success">Διαθέσιμο</Badge>
-              <ConditionBadge condition={part.condition} />
-              <Badge variant="brand">Δημοσιευμένο</Badge>
+              <ConditionBadge condition={partInfo.condition} />
+              <Badge variant="default">{getCategoryName(partInfo.categoryId)}</Badge>
+            </div>
+
+            {/* Inline CTAs */}
+            <div className="flex gap-2.5">
+              <Button
+                type="button"
+                variant="primary"
+                fullWidth
+                onClick={handleRequest}
+                className="h-12 gap-1.5"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
+                </svg>
+                {ctaLabel}
+              </Button>
+              <button
+                type="button"
+                onClick={handleMessage}
+                className="flex-shrink-0 h-12 w-12 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 active:bg-slate-100 transition-colors flex items-center justify-center"
+                aria-label="Μήνυμα στον πωλητή"
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                </svg>
+              </button>
             </div>
           </div>
+        </div>
 
-          {/* Vehicle */}
-          <InfoCard title="Στοιχεία οχήματος">
+        <div className="space-y-4">
+
+          {/* ── 1. Part summary ── */}
+          <InfoCard title="Στοιχεία ανταλλακτικού">
             <div className="space-y-0">
-              <InfoRow label="Μάρκα">{part.vehicle.make}</InfoRow>
-              <InfoRow label="Μοντέλο">{part.vehicle.model}</InfoRow>
-              <InfoRow label="Έτος">{part.vehicle.year}</InfoRow>
-              {part.vehicle.engine && (
-                <InfoRow label="Κινητήρας">
-                  <span className="font-mono text-sm">{part.vehicle.engine}</span>
-                </InfoRow>
-              )}
-              {part.vehicle.fuel && (
-                <InfoRow label="Καύσιμο">{part.vehicle.fuel}</InfoRow>
-              )}
+              <InfoRow label="Κατηγορία">{getCategoryName(partInfo.categoryId)}</InfoRow>
+              <InfoRow label="Κατάσταση">{CONDITION_LABELS[partInfo.condition]}</InfoRow>
+              <InfoRow label="SKU"><span className="font-mono text-xs">{partInfo.sku}</span></InfoRow>
+              <InfoRow label="Τιμή">
+                {hasPrice
+                  ? <span className="font-semibold">{formatPrice(partInfo.price)}</span>
+                  : <span className="italic text-slate-500">Κατόπιν ζήτησης</span>
+                }
+              </InfoRow>
+              <InfoRow label="Διαθεσιμότητα"><Badge variant="success">Διαθέσιμο</Badge></InfoRow>
             </div>
           </InfoCard>
 
-          {/* Seller */}
-          {seller && (
-            <InfoCard title="Πωλητής">
-              <div className="flex items-start justify-between gap-3 mb-3">
-                <div>
-                  <p className="text-sm font-semibold text-slate-900">{seller.businessName}</p>
-                  <p className="text-sm text-slate-500 mt-0.5">{seller.city}</p>
-                </div>
-                {seller.verificationStatus === 'approved' && (
-                  <Badge variant="success">Επαλυθευμένος</Badge>
-                )}
+          {/* ── 2. Donor vehicle card ── */}
+          {partInfo.donorVehicle && (
+            <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+              <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-100">
+                <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Όχημα προέλευσης</p>
               </div>
-              {seller.verificationStatus === 'approved' && (
-                <p className="text-xs text-slate-500 flex items-center gap-1.5">
-                  <svg className="w-3.5 h-3.5 text-green-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  Επαλυθευμένος πωλητής στο Partlink
+              <div className="px-4 py-4">
+                <p className="text-xs text-slate-500 mb-3 leading-relaxed">
+                  Το ανταλλακτικό προέρχεται από αυτό το όχημα.
                 </p>
-              )}
-            </InfoCard>
+                <div className="space-y-0">
+                  <InfoRow label="Μάρκα">{partInfo.donorVehicle.make}</InfoRow>
+                  <InfoRow label="Μοντέλο">{partInfo.donorVehicle.model}</InfoRow>
+                  <InfoRow label="Έτος">{partInfo.donorVehicle.year}</InfoRow>
+                  {partInfo.donorVehicle.engine && (
+                    <InfoRow label="Κινητήρας">
+                      <span className="font-mono">{partInfo.donorVehicle.engine}</span>
+                    </InfoRow>
+                  )}
+                  {partInfo.donorVehicle.fuel && (
+                    <InfoRow label="Καύσιμο">{partInfo.donorVehicle.fuel}</InfoRow>
+                  )}
+                  {partInfo.donorVehicle.mileage && (
+                    <InfoRow label="Χιλιόμετρα">
+                      {partInfo.donorVehicle.mileage.toLocaleString('el-GR')} km
+                    </InfoRow>
+                  )}
+                  {partInfo.donorVehicle.vin && (
+                    <InfoRow label="VIN">
+                      <span className="font-mono text-xs tracking-wider">
+                        {maskVin(partInfo.donorVehicle.vin)}
+                      </span>
+                    </InfoRow>
+                  )}
+                </div>
+              </div>
+            </div>
           )}
 
-          {/* Part details */}
-          <InfoCard title="Στοιχεία ανταλλακτικού">
-            <div className="space-y-0">
-              <InfoRow label="Κατηγορία">{getCategoryName(part.categoryId)}</InfoRow>
-              <InfoRow label="SKU"><span className="font-mono text-sm">{part.sku}</span></InfoRow>
-              {part.vehicle.vin && (
-                <InfoRow label="VIN"><span className="font-mono text-xs">{part.vehicle.vin}</span></InfoRow>
-              )}
+          {/* ── 3. Compatibility safety card ── */}
+          <div className={cn('border rounded-xl overflow-hidden', compat.borderClass)}>
+            <div className={cn('px-4 py-3', compat.bgClass)}>
+              <div className="flex items-start gap-2.5">
+                <svg className={cn('w-4 h-4 flex-shrink-0 mt-0.5', compat.titleClass.replace('text-', 'text-').replace('900', '600'))} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <div>
+                  <p className={cn('text-sm font-semibold mb-0.5', compat.titleClass)}>
+                    {compat.title}
+                  </p>
+                  <p className={cn('text-xs leading-relaxed', compat.textClass)}>
+                    {compat.text}
+                  </p>
+                </div>
+              </div>
             </div>
-            {part.description && (
-              <div className="mt-3 pt-3 border-t border-slate-100">
-                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1.5">Περιγραφή</p>
-                <p className="text-sm text-slate-700 leading-relaxed">{part.description}</p>
+          </div>
+
+          {/* ── 4. OEM / Part numbers ── */}
+          <InfoCard title="OEM / Part numbers">
+            <div className="flex items-start gap-2.5">
+              <svg className="w-4 h-4 text-slate-400 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+              <p className="text-sm text-slate-500">Δεν έχει καταχωρηθεί OEM κωδικός.</p>
+            </div>
+          </InfoCard>
+
+          {/* ── 5. Description / notes ── */}
+          <InfoCard title="Περιγραφή">
+            {partInfo.description ? (
+              <p className="text-sm text-slate-700 leading-relaxed">{partInfo.description}</p>
+            ) : (
+              <p className="text-sm text-slate-400 italic">Δεν υπάρχει αναλυτική περιγραφή ακόμα.</p>
+            )}
+          </InfoCard>
+
+          {/* ── 6. Seller trust card ── */}
+          <InfoCard title="Πωλητής">
+            {seller ? (
+              <div>
+                <div className="flex items-start justify-between gap-3 mb-3">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">{seller.businessName}</p>
+                    <p className="text-sm text-slate-500 mt-0.5">{seller.city}</p>
+                  </div>
+                  {seller.verificationStatus === 'approved' && (
+                    <Badge variant="success">Επαλυθευμένος</Badge>
+                  )}
+                </div>
+                <div className="space-y-1.5">
+                  <p className="text-xs text-slate-600 flex items-center gap-1.5">
+                    <svg className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                    </svg>
+                    Επαγγελματίας πωλητής
+                  </p>
+                  <p className="text-xs text-slate-500 flex items-center gap-1.5">
+                    <svg className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    Έλεγχος διαθεσιμότητας πριν την αγορά
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                <p className="text-sm font-semibold text-slate-900">Επαγγελματίας πωλητής</p>
+                <p className="text-xs text-slate-500 flex items-center gap-1.5">
+                  <svg className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  Έλεγχος διαθεσιμότητας πριν την αγορά
+                </p>
               </div>
             )}
           </InfoCard>
 
-          {/* Secondary actions */}
-          <div className="space-y-2.5">
-            <Link
-              href={ROUTES.BUYER.CHATS}
-              className="w-full h-11 flex items-center justify-center gap-2 border border-slate-200 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50 active:bg-slate-100 transition-colors"
-            >
-              <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-              </svg>
-              Μήνυμα στον πωλητή
-            </Link>
-            <button
-              type="button"
-              className="w-full h-11 flex items-center justify-center gap-2 border border-slate-200 rounded-xl text-sm font-medium text-slate-500 hover:bg-slate-50 active:bg-slate-100 transition-colors"
-            >
-              <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
-              </svg>
-              Αποθήκευση
-            </button>
+          {/* ── 7. Compatibility check placeholder ── */}
+          <div className="bg-slate-50 border border-slate-200 rounded-xl overflow-hidden">
+            <div className="px-4 py-2.5 bg-slate-100 border-b border-slate-200 flex items-center justify-between">
+              <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Έλεγχος συμβατότητας</p>
+              <span className="text-[10px] font-semibold text-slate-400 bg-slate-200 rounded px-1.5 py-0.5">Σύντομα</span>
+            </div>
+            <div className="px-4 py-4">
+              <p className="text-sm text-slate-500 leading-relaxed">
+                Σύντομα θα μπορείς να ελέγχεις με VIN ή OEM αν ταιριάζει στο όχημά σου.
+              </p>
+            </div>
           </div>
+
         </div>
       </div>
 
-      {/* Sticky bottom action bar */}
+      {/* ── Sticky bottom action bar ── */}
       <div className="fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-slate-200 px-4 py-3">
-        <div className={cn(
-          'flex items-center gap-3 max-w-2xl mx-auto',
-        )}>
+        <div className="flex items-center gap-3 max-w-2xl mx-auto">
           <div className="flex-shrink-0">
-            <p className="text-xl font-bold text-slate-900 tabular-nums">{formatPrice(part.price)}</p>
-            <p className="text-xs text-slate-400 mt-0.5">+ αποστολή</p>
+            {hasPrice ? (
+              <>
+                <p className="text-xl font-bold text-slate-900 tabular-nums">{formatPrice(partInfo.price)}</p>
+                <p className="text-xs text-slate-400 mt-0.5">+ αποστολή</p>
+              </>
+            ) : (
+              <p className="text-sm font-medium text-slate-500 italic">Κατόπιν ζήτησης</p>
+            )}
           </div>
 
-          {requestState === 'idle' ? (
-            <Button
-              variant="primary"
-              fullWidth
-              onClick={() => setRequestState('sent')}
-              className="h-11 gap-1.5"
-            >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
-              </svg>
-              Αίτημα αγοράς
-            </Button>
-          ) : (
-            <div className="flex-1 h-11 flex items-center justify-center gap-2 bg-green-50 border border-green-200 rounded-lg">
-              <svg className="w-4 h-4 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-              </svg>
-              <span className="text-sm font-semibold text-green-800">Αίτημα στάλθηκε</span>
-            </div>
-          )}
+          <Button
+            type="button"
+            variant="primary"
+            fullWidth
+            onClick={handleRequest}
+            className="h-11 gap-1.5"
+          >
+            {ctaLabel}
+          </Button>
+
+          <button
+            type="button"
+            onClick={handleMessage}
+            className="flex-shrink-0 h-11 w-11 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 active:bg-slate-100 transition-colors flex items-center justify-center"
+            aria-label="Μήνυμα"
+          >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+            </svg>
+          </button>
         </div>
       </div>
     </>
