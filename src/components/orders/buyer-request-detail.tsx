@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import Link from 'next/link'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -11,6 +11,9 @@ import { findBuyerRequestById } from '@/lib/mock-data/buyer-requests'
 import type { BuyerRequest, RequestStatus } from '@/lib/mock-data/buyer-requests'
 import { BUYER_STATUS_CONFIG } from '@/lib/requests/status'
 import { DELIVERY_PREFERENCE_LABELS } from '@/lib/requests/delivery'
+import { buildBaseActivityEvents } from '@/lib/requests/activity'
+import type { RequestActivityEvent } from '@/lib/requests/activity'
+import { RequestActivityTimeline } from '@/components/orders/request-activity-timeline'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -71,6 +74,13 @@ function BuyerRequestDetailContent({ request }: { request: BuyerRequest }) {
   const [showMsgPanel,  setShowMsgPanel]  = useState(false)
   const [msgText,       setMsgText]       = useState('')
   const [successNote,   setSuccessNote]   = useState<string | null>(null)
+  const [localEvents,   setLocalEvents]   = useState<RequestActivityEvent[]>([])
+  const eventCounter = useRef(0)
+
+  const addEvent = (event: Omit<RequestActivityEvent, 'id'>) => {
+    eventCounter.current += 1
+    setLocalEvents((prev) => [...prev, { ...event, id: `local-${eventCounter.current}` }])
+  }
 
   const displayStatus: RequestStatus = priceAccepted ? 'completed' : status
   const { label: statusLabel, variant: statusVariant } = BUYER_STATUS_CONFIG[displayStatus]
@@ -84,17 +94,21 @@ function BuyerRequestDetailContent({ request }: { request: BuyerRequest }) {
   const handleAcceptPrice = () => {
     setPriceAccepted(true)
     setStatus('completed')
+    addEvent({ title: 'Τιμή αποδέχτηκε', description: 'Το επόμενο βήμα θα είναι παραλαβή ή αποστολή.', tone: 'success' })
     showToast('Η τιμή αποδέχτηκε για το demo. Το επόμενο βήμα θα είναι παραλαβή ή αποστολή.')
   }
 
   const handleSendMsg = () => {
     if (!msgText.trim()) return
+    const text = msgText.trim()
     setShowMsgPanel(false)
     setMsgText('')
+    addEvent({ title: 'Μήνυμα στάλθηκε', description: text, tone: 'info' })
     showToast('Το μήνυμα στάλθηκε για το demo.')
   }
 
   const canAcceptPrice = request.priceSent !== undefined && !priceAccepted && displayStatus !== 'completed'
+  const allEvents = [...buildBaseActivityEvents(request), ...localEvents]
 
   return (
     <>
@@ -198,52 +212,33 @@ function BuyerRequestDetailContent({ request }: { request: BuyerRequest }) {
               </p>
             </div>
 
-            {/* F. Actions */}
-            {!priceAccepted && (
-              <>
-                {!showMsgPanel ? (
-                  <div className="flex flex-col gap-2.5">
-                    {canAcceptPrice && (
-                      <Button type="button" variant="primary" fullWidth onClick={handleAcceptPrice} className="h-12 gap-1.5">
-                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                        </svg>
-                        Αποδοχή τιμής {request.priceSent ? formatPrice(request.priceSent) : ''}
-                      </Button>
+            {/* F. Activity timeline */}
+            <RequestActivityTimeline events={allEvents} />
+
+            {/* G. Message panel — triggered from sticky bar */}
+            {!priceAccepted && showMsgPanel && (
+              <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+                <div className="flex items-center justify-between px-4 py-2.5 bg-slate-50 border-b border-slate-100">
+                  <p className="text-sm font-semibold text-slate-900">Μήνυμα στον πωλητή</p>
+                  <button type="button" onClick={() => setShowMsgPanel(false)} className="text-xs text-slate-500 hover:text-slate-700 font-medium">Ακύρωση</button>
+                </div>
+                <div className="px-4 py-4 space-y-3">
+                  <textarea
+                    value={msgText}
+                    onChange={(e) => setMsgText(e.target.value)}
+                    placeholder="Γράψε το μήνυμά σου..."
+                    rows={3}
+                    className={cn(
+                      'w-full text-sm bg-white border border-slate-200 rounded-lg px-3 py-2.5 resize-none',
+                      'text-slate-900 placeholder:text-slate-400',
+                      'focus:outline-none focus:ring-2 focus:ring-blue-500'
                     )}
-                    <button
-                      type="button"
-                      onClick={() => { setShowMsgPanel(true); setMsgText('') }}
-                      className="w-full h-11 border border-slate-200 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors"
-                    >
-                      Μήνυμα στον πωλητή
-                    </button>
-                  </div>
-                ) : (
-                  <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
-                    <div className="flex items-center justify-between px-4 py-2.5 bg-slate-50 border-b border-slate-100">
-                      <p className="text-sm font-semibold text-slate-900">Μήνυμα στον πωλητή</p>
-                      <button type="button" onClick={() => setShowMsgPanel(false)} className="text-xs text-slate-500 hover:text-slate-700 font-medium">Ακύρωση</button>
-                    </div>
-                    <div className="px-4 py-4 space-y-3">
-                      <textarea
-                        value={msgText}
-                        onChange={(e) => setMsgText(e.target.value)}
-                        placeholder="Γράψε το μήνυμά σου..."
-                        rows={3}
-                        className={cn(
-                          'w-full text-sm bg-white border border-slate-200 rounded-lg px-3 py-2.5 resize-none',
-                          'text-slate-900 placeholder:text-slate-400',
-                          'focus:outline-none focus:ring-2 focus:ring-blue-500'
-                        )}
-                      />
-                      <Button type="button" variant="primary" fullWidth onClick={handleSendMsg} className="h-11" disabled={!msgText.trim()}>
-                        Αποστολή μηνύματος
-                      </Button>
-                    </div>
-                  </div>
-                )}
-              </>
+                  />
+                  <Button type="button" variant="primary" fullWidth onClick={handleSendMsg} className="h-11" disabled={!msgText.trim()}>
+                    Αποστολή μηνύματος
+                  </Button>
+                </div>
+              </div>
             )}
           </div>
         </PageContainer>

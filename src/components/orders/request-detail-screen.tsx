@@ -1,17 +1,20 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import Link from 'next/link'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { PriceInput } from '@/components/forms/price-input'
 import { PageContainer } from '@/components/layout/page-container'
-import { cn, formatDate, formatPrice } from '@/lib/utils'
+import { formatDate, formatPrice } from '@/lib/utils'
 import { ROUTES } from '@/lib/routes'
 import { findBuyerRequestById } from '@/lib/mock-data/buyer-requests'
 import type { BuyerRequest, RequestStatus } from '@/lib/mock-data/buyer-requests'
 import { SELLER_STATUS_CONFIG } from '@/lib/requests/status'
 import { DELIVERY_PREFERENCE_LABELS } from '@/lib/requests/delivery'
+import { buildBaseActivityEvents } from '@/lib/requests/activity'
+import type { RequestActivityEvent } from '@/lib/requests/activity'
+import { RequestActivityTimeline } from '@/components/orders/request-activity-timeline'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -69,14 +72,21 @@ function RequestNotFound() {
 type ActivePanel = 'price' | 'reply' | null
 
 function RequestDetailContent({ request }: { request: BuyerRequest }) {
-  const [status,      setStatus]      = useState<RequestStatus>(request.status)
-  const [priceSent,   setPriceSent]   = useState<number | undefined>(request.priceSent)
-  const [replyNote,   setReplyNote]   = useState<string | undefined>(request.replyNote)
-  const [activePanel, setActivePanel] = useState<ActivePanel>(null)
-  const [priceInput,  setPriceInput]  = useState('')
-  const [priceMsg,    setPriceMsg]    = useState('')
-  const [replyText,   setReplyText]   = useState('')
-  const [successNote, setSuccessNote] = useState<string | null>(null)
+  const [status,       setStatus]       = useState<RequestStatus>(request.status)
+  const [priceSent,    setPriceSent]    = useState<number | undefined>(request.priceSent)
+  const [replyNote,    setReplyNote]    = useState<string | undefined>(request.replyNote)
+  const [activePanel,  setActivePanel]  = useState<ActivePanel>(null)
+  const [priceInput,   setPriceInput]   = useState('')
+  const [priceMsg,     setPriceMsg]     = useState('')
+  const [replyText,    setReplyText]    = useState('')
+  const [successNote,  setSuccessNote]  = useState<string | null>(null)
+  const [localEvents,  setLocalEvents]  = useState<RequestActivityEvent[]>([])
+  const eventCounter = useRef(0)
+
+  const addEvent = (event: Omit<RequestActivityEvent, 'id'>) => {
+    eventCounter.current += 1
+    setLocalEvents((prev) => [...prev, { ...event, id: `local-${eventCounter.current}` }])
+  }
 
   const showActions = status !== 'completed'
   const hasPrice    = request.partPrice > 0
@@ -96,12 +106,14 @@ function RequestDetailContent({ request }: { request: BuyerRequest }) {
 
   const handleMarkAvailable = () => {
     setStatus('in_progress')
+    addEvent({ title: 'Διαθεσιμότητα επιβεβαιώθηκε', description: 'Το αίτημα σημειώθηκε ως σε εξέλιξη.', tone: 'success' })
     showToast('Ο αγοραστής θα ενημερωθεί για διαθεσιμότητα.')
   }
 
   const handleMarkUnavailable = () => {
     setStatus('completed')
     setActivePanel(null)
+    addEvent({ title: 'Δεν είναι διαθέσιμο', description: 'Το αίτημα ολοκληρώθηκε ως μη διαθέσιμο.', tone: 'warning' })
   }
 
   const handleSubmitPrice = () => {
@@ -110,15 +122,20 @@ function RequestDetailContent({ request }: { request: BuyerRequest }) {
     setPriceSent(price)
     setStatus('in_progress')
     setActivePanel(null)
+    addEvent({ title: 'Τιμή στάλθηκε', description: `Στάλθηκε τιμή ${price.toLocaleString('el-GR', { style: 'currency', currency: 'EUR' })} στον αγοραστή.`, tone: 'info' })
     showToast('Η τιμή στάλθηκε για το demo.')
   }
 
   const handleSubmitReply = () => {
     if (!replyText.trim()) return
-    setReplyNote(replyText.trim())
+    const text = replyText.trim()
+    setReplyNote(text)
     setActivePanel(null)
+    addEvent({ title: 'Απάντηση στάλθηκε', description: text, tone: 'info' })
     showToast('Η απάντηση στάλθηκε για το demo.')
   }
+
+  const allEvents = [...buildBaseActivityEvents(request), ...localEvents]
 
   // Primary CTA for sticky bar
   const primaryCta = status === 'needs_price' ? 'Αποστολή τιμής' : 'Απάντηση'
@@ -135,7 +152,7 @@ function RequestDetailContent({ request }: { request: BuyerRequest }) {
         </div>
       )}
 
-      <div className="pb-36 lg:pb-10">
+      <div className="pb-44 lg:pb-10">
         <PageContainer>
 
           {/* Header */}
@@ -230,50 +247,32 @@ function RequestDetailContent({ request }: { request: BuyerRequest }) {
               </p>
             </div>
 
-            {/* E. Seller actions */}
+            {/* E. Activity timeline */}
+            <RequestActivityTimeline events={allEvents} />
+
+            {/* F. Seller actions */}
             {showActions && (
               <>
-                {activePanel === null ? (
+                {/* Availability buttons — unique to inline (not in sticky bar) */}
+                {activePanel === null && (status === 'new' || status === 'needs_price') && (
                   <div className="grid grid-cols-2 gap-2">
-                    {(status === 'new' || status === 'needs_price') && (
-                      <button
-                        type="button"
-                        onClick={handleMarkAvailable}
-                        className="h-12 rounded-xl border-2 border-green-400 bg-green-50 text-sm font-semibold text-green-800 hover:bg-green-100 transition-colors"
-                      >
-                        Διαθέσιμο
-                      </button>
-                    )}
-                    {(status === 'new' || status === 'needs_price') && (
-                      <button
-                        type="button"
-                        onClick={handleMarkUnavailable}
-                        className="h-12 rounded-xl border-2 border-slate-200 bg-white text-sm font-medium text-red-600 hover:bg-red-50 hover:border-red-200 transition-colors"
-                      >
-                        Δεν είναι διαθέσιμο
-                      </button>
-                    )}
                     <button
                       type="button"
-                      onClick={() => openPanel('price')}
-                      className={cn(
-                        'h-12 rounded-xl border-2 text-sm font-semibold transition-colors',
-                        status === 'needs_price' && !priceSent
-                          ? 'border-blue-500 bg-blue-600 text-white hover:bg-blue-700'
-                          : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
-                      )}
+                      onClick={handleMarkAvailable}
+                      className="h-12 rounded-xl border-2 border-green-400 bg-green-50 text-sm font-semibold text-green-800 hover:bg-green-100 transition-colors"
                     >
-                      {priceSent ? 'Αλλαγή τιμής' : 'Αποστολή τιμής'}
+                      Διαθέσιμο
                     </button>
                     <button
                       type="button"
-                      onClick={() => openPanel('reply')}
-                      className="h-12 rounded-xl border-2 border-slate-200 bg-white text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+                      onClick={handleMarkUnavailable}
+                      className="h-12 rounded-xl border-2 border-slate-200 bg-white text-sm font-medium text-red-600 hover:bg-red-50 hover:border-red-200 transition-colors"
                     >
-                      Απάντηση
+                      Δεν είναι διαθέσιμο
                     </button>
                   </div>
-                ) : activePanel === 'price' ? (
+                )}
+                {activePanel === 'price' ? (
                   /* Price panel */
                   <div className="bg-white border border-blue-200 rounded-xl overflow-hidden">
                     <div className="flex items-center justify-between px-4 py-2.5 bg-blue-50 border-b border-blue-100">
@@ -300,7 +299,7 @@ function RequestDetailContent({ request }: { request: BuyerRequest }) {
                       </Button>
                     </div>
                   </div>
-                ) : (
+                ) : activePanel === 'reply' ? (
                   /* Reply panel */
                   <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
                     <div className="flex items-center justify-between px-4 py-2.5 bg-slate-50 border-b border-slate-100">
@@ -320,7 +319,7 @@ function RequestDetailContent({ request }: { request: BuyerRequest }) {
                       </Button>
                     </div>
                   </div>
-                )}
+                ) : null}
               </>
             )}
           </div>
