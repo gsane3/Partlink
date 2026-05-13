@@ -17,6 +17,7 @@ import { RequestActivityTimeline } from '@/components/orders/request-activity-ti
 import { buildBaseRequestMessages } from '@/lib/requests/messages'
 import type { RequestMessage } from '@/lib/requests/messages'
 import { RequestMessageThread } from '@/components/orders/request-message-thread'
+import { getCurrentBuyerProfile } from '@/lib/mock-data/profiles'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -119,8 +120,9 @@ function BuyerRequestDetailContent({ request }: { request: BuyerRequest }) {
   }
 
   const canAcceptPrice = request.priceSent !== undefined && !priceAccepted && displayStatus !== 'completed'
-  const allEvents   = [...buildBaseActivityEvents(request), ...localEvents]
-  const allMessages = [...buildBaseRequestMessages(request), ...localMessages]
+  const allEvents      = [...buildBaseActivityEvents(request), ...localEvents]
+  const allMessages    = [...buildBaseRequestMessages(request), ...localMessages]
+  const buyerProfile   = getCurrentBuyerProfile()
 
   return (
     <>
@@ -180,7 +182,52 @@ function BuyerRequestDetailContent({ request }: { request: BuyerRequest }) {
               </div>
             </InfoCard>
 
-            {/* B. Seller card */}
+            {/* B. Price accepted confirmation card */}
+            {priceAccepted && (
+              <div className="bg-white border border-green-200 rounded-xl overflow-hidden">
+                <div className="px-4 py-3 bg-green-50 border-b border-green-100 flex items-center gap-2">
+                  <svg className="w-4 h-4 text-green-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                  </svg>
+                  <p className="text-sm font-semibold text-green-800">Η τιμή αποδέχτηκε</p>
+                </div>
+                <div className="px-4 py-4">
+                  <p className="text-sm text-slate-600 mb-3">
+                    Το αίτημα προχώρησε στο επόμενο βήμα για παραλαβή ή αποστολή.
+                  </p>
+                  <div className="space-y-0">
+                    <InfoRow label="Ανταλλακτικό">{request.partName}</InfoRow>
+                    {request.priceSent !== undefined && (
+                      <InfoRow label="Τιμή πωλητή">
+                        <span className="font-bold text-green-700">{formatPrice(request.priceSent)}</span>
+                      </InfoRow>
+                    )}
+                    <InfoRow label="Πωλητής">{request.sellerName ?? 'Πωλητής'}</InfoRow>
+                    <InfoRow label="Παραλαβή">{DELIVERY_PREFERENCE_LABELS[request.delivery]}</InfoRow>
+                  </div>
+
+                  {request.delivery === 'shipping' && (
+                    <div className="border-t border-slate-100 mt-3 pt-3 space-y-0">
+                      <InfoRow label="Διεύθυνση">{buyerProfile.address}</InfoRow>
+                      <InfoRow label="Τ.Κ.">{buyerProfile.postalCode}</InfoRow>
+                      <InfoRow label="Πόλη">{buyerProfile.city}</InfoRow>
+                    </div>
+                  )}
+                  {request.delivery === 'pickup' && (
+                    <p className="text-xs text-slate-600 border-t border-slate-100 mt-3 pt-3">
+                      Θα συνεννοηθείς με τον πωλητή για παραλαβή.
+                    </p>
+                  )}
+                  {request.delivery === 'unknown' && (
+                    <p className="text-xs text-slate-600 border-t border-slate-100 mt-3 pt-3">
+                      Θα χρειαστεί να συμφωνηθεί τρόπος παραλαβής με τον πωλητή.
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* C. Seller card */}
             <InfoCard title="Πωλητής">
               <p className="text-sm font-semibold text-slate-900">
                 {request.sellerName ?? 'Επαγγελματίας πωλητής'}
@@ -188,20 +235,8 @@ function BuyerRequestDetailContent({ request }: { request: BuyerRequest }) {
               <p className="text-xs text-slate-500 mt-1">Επαλυθευμένος πωλητής στο Partlink</p>
             </InfoCard>
 
-            {/* C. Message thread */}
+            {/* D. Message thread */}
             <RequestMessageThread messages={allMessages} perspective="buyer" />
-
-            {/* Price acceptance banner */}
-            {priceAccepted && (
-              <div className="flex items-start gap-2.5 bg-green-50 border border-green-200 rounded-xl px-4 py-3.5">
-                <svg className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                </svg>
-                <p className="text-sm text-green-800">
-                  Η τιμή αποδέχτηκε. Το επόμενο βήμα θα είναι παραλαβή ή αποστολή.
-                </p>
-              </div>
-            )}
 
             {/* E. Compatibility warning */}
             <div className="flex items-start gap-2.5 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3.5">
@@ -217,7 +252,7 @@ function BuyerRequestDetailContent({ request }: { request: BuyerRequest }) {
             <RequestActivityTimeline events={allEvents} />
 
             {/* G. Message panel — triggered from sticky bar */}
-            {!priceAccepted && showMsgPanel && (
+            {showMsgPanel && (
               <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
                 <div className="flex items-center justify-between px-4 py-2.5 bg-slate-50 border-b border-slate-100">
                   <p className="text-sm font-semibold text-slate-900">Μήνυμα στον πωλητή</p>
@@ -246,7 +281,7 @@ function BuyerRequestDetailContent({ request }: { request: BuyerRequest }) {
       </div>
 
       {/* Sticky bottom bar */}
-      {!priceAccepted && !showMsgPanel && (
+      {!showMsgPanel && (
         <div className="fixed bottom-16 lg:bottom-0 left-0 lg:left-60 right-0 z-30 bg-white border-t border-slate-200 px-4 py-3">
           <div className="flex gap-2.5 max-w-2xl mx-auto">
             <Link
@@ -258,7 +293,7 @@ function BuyerRequestDetailContent({ request }: { request: BuyerRequest }) {
               </svg>
               Πίσω
             </Link>
-            {canAcceptPrice ? (
+            {!priceAccepted && canAcceptPrice ? (
               <Button type="button" variant="primary" fullWidth onClick={handleAcceptPrice} className="h-11 gap-1.5">
                 Αποδοχή τιμής
               </Button>
