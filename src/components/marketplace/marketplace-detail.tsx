@@ -11,6 +11,7 @@ import { formatPrice, cn } from '@/lib/utils'
 import { findPartDetail } from '@/lib/mock-data/part-detail'
 import { mockParts } from '@/lib/mock-data/parts'
 import { mockSellers } from '@/lib/mock-data/sellers'
+import { RequestSheet } from './request-sheet'
 import type { CompatibilityStatus } from '@/components/inventory/vin-import/types'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -111,10 +112,8 @@ function NotFound() {
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-type ToastState = 'idle' | 'request' | 'message'
-
 export function MarketplaceDetail({ partId }: { partId: string }) {
-  const [toast, setToast] = useState<ToastState>('idle')
+  const [sheetMode, setSheetMode] = useState<'request' | 'message' | null>(null)
 
   const partInfo = findPartDetail(partId)
 
@@ -134,27 +133,19 @@ export function MarketplaceDetail({ partId }: { partId: string }) {
   const hasPrice = partInfo.price > 0
   const ctaLabel = hasPrice ? 'Ζήτηση για αγορά' : 'Ζήτα τιμή'
 
-  const handleRequest = () => {
-    setToast('request')
-    setTimeout(() => setToast('idle'), 3000)
-  }
-
-  const handleMessage = () => {
-    setToast('message')
-    setTimeout(() => setToast('idle'), 3000)
-  }
+  const openSheet = (mode: 'request' | 'message') => setSheetMode(mode)
+  const closeSheet = () => setSheetMode(null)
 
   return (
     <>
-      {/* Toast */}
-      {toast !== 'idle' && (
-        <div className="fixed top-16 left-0 right-0 z-40 flex justify-center px-4 pt-3 pointer-events-none">
-          <div className="bg-green-600 text-white text-sm font-medium rounded-xl px-5 py-3 shadow-lg">
-            {toast === 'request'
-              ? 'Το αίτημα στάλθηκε για το demo.'
-              : 'Το μήνυμα άνοιξε για το demo.'}
-          </div>
-        </div>
+      {/* Request / message sheet */}
+      {sheetMode !== null && (
+        <RequestSheet
+          mode={sheetMode}
+          partInfo={partInfo}
+          sellerName={seller?.businessName}
+          onClose={closeSheet}
+        />
       )}
 
       {/* Scrollable content */}
@@ -221,7 +212,7 @@ export function MarketplaceDetail({ partId }: { partId: string }) {
                 type="button"
                 variant="primary"
                 fullWidth
-                onClick={handleRequest}
+                onClick={() => openSheet('request')}
                 className="h-12 gap-1.5"
               >
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
@@ -231,7 +222,7 @@ export function MarketplaceDetail({ partId }: { partId: string }) {
               </Button>
               <button
                 type="button"
-                onClick={handleMessage}
+                onClick={() => openSheet('message')}
                 className="flex-shrink-0 h-12 w-12 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 active:bg-slate-100 transition-colors flex items-center justify-center"
                 aria-label="Μήνυμα στον πωλητή"
               >
@@ -413,7 +404,7 @@ export function MarketplaceDetail({ partId }: { partId: string }) {
             type="button"
             variant="primary"
             fullWidth
-            onClick={handleRequest}
+            onClick={() => openSheet('request')}
             className="h-11 gap-1.5"
           >
             {ctaLabel}
@@ -421,7 +412,7 @@ export function MarketplaceDetail({ partId }: { partId: string }) {
 
           <button
             type="button"
-            onClick={handleMessage}
+            onClick={() => openSheet('message')}
             className="flex-shrink-0 h-11 w-11 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 active:bg-slate-100 transition-colors flex items-center justify-center"
             aria-label="Μήνυμα"
           >
