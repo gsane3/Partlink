@@ -6,6 +6,7 @@ import { MobileBottomNav, type MobileNavItem } from './mobile-bottom-nav'
 import { MobileFAB } from './mobile-fab'
 import { TopBar, TopBarIconButton } from './top-bar'
 import type { ReactNode } from 'react'
+import { getSellerOpenRequestCount } from '@/lib/requests/counts'
 
 const SELLER_NAV: NavItem[] = [
   {
@@ -28,9 +29,9 @@ const SELLER_NAV: NavItem[] = [
     ),
   },
   {
-    label: 'Παραγγελίες',
+    label: 'Αιτήματα',
     href: '/seller/orders',
-    badge: 2,
+    badge: getSellerOpenRequestCount() || undefined,
     icon: (
       <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
@@ -83,9 +84,9 @@ const SELLER_MOBILE_NAV: MobileNavItem[] = [
     ),
   },
   {
-    label: 'Παραγγελίες',
+    label: 'Αιτήματα',
     href: '/seller/orders',
-    badge: 2,
+    badge: getSellerOpenRequestCount() || undefined,
     icon: (
       <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />

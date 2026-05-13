@@ -5,6 +5,7 @@ import { DesktopSidebar, type NavItem } from './desktop-sidebar'
 import { MobileBottomNav, type MobileNavItem } from './mobile-bottom-nav'
 import { TopBar, TopBarIconButton } from './top-bar'
 import type { ReactNode } from 'react'
+import { getBuyerActionRequestCount } from '@/lib/requests/counts'
 
 const BUYER_NAV: NavItem[] = [
   {
@@ -29,6 +30,7 @@ const BUYER_NAV: NavItem[] = [
   {
     label: 'Αιτήματα',
     href: '/buyer/orders',
+    badge: getBuyerActionRequestCount() || undefined,
     icon: (
       <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
@@ -82,6 +84,7 @@ const BUYER_MOBILE_NAV: MobileNavItem[] = [
   {
     label: 'Αιτήματα',
     href: '/buyer/orders',
+    badge: getBuyerActionRequestCount() || undefined,
     icon: (
       <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
