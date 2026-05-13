@@ -103,15 +103,17 @@ export default function AdminOrdersPage() {
       />
 
       {/* Filter chips */}
-      <div className="flex gap-1.5 overflow-x-auto pb-0.5 mb-5 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-        {FILTER_OPTIONS.map((opt) => (
-          <FilterChip
-            key={opt.value}
-            label={opt.label}
-            selected={activeFilter === opt.value}
-            onClick={() => setActiveFilter(opt.value)}
-          />
-        ))}
+      <div className="overflow-x-auto pb-0.5 mb-5 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+        <div className="flex gap-1.5 min-w-max pr-4">
+          {FILTER_OPTIONS.map((opt) => (
+            <FilterChip
+              key={opt.value}
+              label={opt.label}
+              selected={activeFilter === opt.value}
+              onClick={() => setActiveFilter(opt.value)}
+            />
+          ))}
+        </div>
       </div>
 
       <p className="text-xs text-slate-500 mb-3">

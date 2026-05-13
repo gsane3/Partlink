@@ -136,7 +136,7 @@ export default function AdminReportsPage() {
         <InsightCard
           label="Αδιευκρίνιστη παραλαβή"
           value={unknownDelivery}
-          note="Τρόπος παραλαβής δεν έχει συμφωνηθεί — review."
+          note="Τρόπος παραλαβής δεν έχει συμφωνηθεί. Σε review."
           accent="text-amber-600"
         />
         <InsightCard
