@@ -1,185 +1,139 @@
 'use client'
 
 import { useState } from 'react'
-import { getAdminOrders, getAdminStats } from '@/lib/data/admin'
+import { Badge } from '@/components/ui/badge'
+import { FilterChip } from '@/components/forms/filter-chip'
 import { PageContainer } from '@/components/layout/page-container'
 import { SectionHeader } from '@/components/layout/section-header'
-import { DashboardGrid } from '@/components/layout/dashboard-grid'
-import { MetricCard } from '@/components/layout/metric-card'
-import { FilterChip } from '@/components/forms/filter-chip'
-import { SearchInput } from '@/components/forms/search-input'
-import { Badge } from '@/components/ui/badge'
-import {
-  ORDER_STATUS_LABELS,
-  PAYMENT_METHOD_LABELS,
-  DELIVERY_METHOD_LABELS,
-} from '@/lib/constants'
-import { formatOrderNumber, formatDate, formatPrice } from '@/lib/utils'
-import type { OrderStatus, PaymentStatus } from '@/types'
-import type { BadgeVariant } from '@/components/ui/badge'
+import { formatDate, formatPrice } from '@/lib/utils'
+import { mockBuyerRequests } from '@/lib/mock-data/buyer-requests'
+import type { BuyerRequest } from '@/lib/mock-data/buyer-requests'
+import { SELLER_STATUS_CONFIG } from '@/lib/requests/status'
+import { DELIVERY_PREFERENCE_LABELS } from '@/lib/requests/delivery'
+import { buildBaseRequestMessages } from '@/lib/requests/messages'
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ─── Filter config ────────────────────────────────────────────────────────────
 
-const ORDER_STATUS_VARIANT: Record<OrderStatus, BadgeVariant> = {
-  pending: 'warning',
-  confirmed: 'brand',
-  dispatched: 'purple',
-  shipped: 'purple',
-  delivered: 'success',
-  cancelled: 'danger',
-  returned: 'danger',
-}
+type AdminFilter = 'all' | 'new' | 'needs_price' | 'in_progress' | 'completed' | 'replied' | 'with_price'
 
-const PAYMENT_STATUS_VARIANT: Record<PaymentStatus, BadgeVariant> = {
-  pending: 'warning',
-  paid: 'success',
-  failed: 'danger',
-  refunded: 'muted',
-}
-
-const PAYMENT_STATUS_LABELS: Record<PaymentStatus, string> = {
-  pending: 'Εκκρεμεί',
-  paid: 'Πληρώθηκε',
-  failed: 'Απέτυχε',
-  refunded: 'Επιστράφηκε',
-}
-
-type OrderFilter = 'all' | 'pending' | 'confirmed' | 'dispatched' | 'cancelled'
-
-const FILTER_OPTIONS: { value: OrderFilter; label: string }[] = [
-  { value: 'all', label: 'Όλες' },
-  { value: 'pending', label: 'Σε αναμονή' },
-  { value: 'confirmed', label: 'Επιβεβαιωμένες' },
-  { value: 'dispatched', label: 'Εστάλησαν' },
-  { value: 'cancelled', label: 'Ακυρώθηκαν' },
+const FILTER_OPTIONS: { value: AdminFilter; label: string }[] = [
+  { value: 'all',          label: 'Όλα' },
+  { value: 'new',          label: 'Νέα' },
+  { value: 'needs_price',  label: 'Θέλουν τιμή' },
+  { value: 'in_progress',  label: 'Σε εξέλιξη' },
+  { value: 'completed',    label: 'Ολοκληρωμένα' },
+  { value: 'replied',      label: 'Με απάντηση' },
+  { value: 'with_price',   label: 'Με τιμή' },
 ]
+
+function matchesFilter(req: BuyerRequest, f: AdminFilter): boolean {
+  if (f === 'all')         return true
+  if (f === 'new')         return req.status === 'new'
+  if (f === 'needs_price') return req.status === 'needs_price'
+  if (f === 'in_progress') return req.status === 'in_progress'
+  if (f === 'completed')   return req.status === 'completed'
+  if (f === 'replied')     return !!req.replyNote
+  if (f === 'with_price')  return req.priceSent !== undefined
+  return true
+}
+
+// ─── Request card ─────────────────────────────────────────────────────────────
+
+function RequestCard({ req }: { req: BuyerRequest }) {
+  const { label: statusLabel, variant: statusVariant } = SELLER_STATUS_CONFIG[req.status]
+  const messages    = buildBaseRequestMessages(req)
+  const lastMsg     = messages[messages.length - 1]
+
+  return (
+    <div className="bg-white border border-slate-200 rounded-xl px-4 py-4">
+      {/* Top row */}
+      <div className="flex items-start justify-between gap-3 mb-1.5">
+        <div className="flex items-center gap-2 flex-wrap min-w-0">
+          <span className="text-xs font-mono text-slate-400 flex-shrink-0">{req.id}</span>
+          <Badge variant={statusVariant}>{statusLabel}</Badge>
+          {req.priceSent !== undefined && (
+            <Badge variant="success">Τιμή</Badge>
+          )}
+          {req.replyNote && (
+            <Badge variant="brand">Απάντηση</Badge>
+          )}
+        </div>
+        <span className="text-xs text-slate-400 flex-shrink-0">{formatDate(req.createdAt)}</span>
+      </div>
+
+      {/* Part */}
+      <p className="text-sm font-semibold text-slate-900 truncate">{req.partName}</p>
+      <p className="text-xs text-slate-400 font-mono mb-1">{req.partSku}</p>
+
+      {/* Buyer → Seller */}
+      <p className="text-xs text-slate-600 truncate mb-1">
+        {req.buyerCompany}
+        <span className="text-slate-300 mx-1.5">→</span>
+        {req.sellerName ?? 'Πωλητής'}
+      </p>
+
+      {/* Delivery + price sent */}
+      <div className="flex items-center gap-2 flex-wrap mb-1.5">
+        <span className="text-xs text-slate-400">{DELIVERY_PREFERENCE_LABELS[req.delivery]}</span>
+        {req.priceSent !== undefined && (
+          <span className="text-xs font-semibold text-green-700">{formatPrice(req.priceSent)}</span>
+        )}
+      </div>
+
+      {/* Last message preview */}
+      {lastMsg && (
+        <p className="text-xs text-slate-500 italic line-clamp-1">&ldquo;{lastMsg.body}&rdquo;</p>
+      )}
+    </div>
+  )
+}
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function AdminOrdersPage() {
-  const [filter, setFilter] = useState<OrderFilter>('all')
-  const [search, setSearch] = useState('')
+  const [activeFilter, setActiveFilter] = useState<AdminFilter>('all')
 
-  const stats = getAdminStats()
-  const allOrderItems = getAdminOrders()
-
-  const confirmedCount = allOrderItems.filter((i) => i.order.status === 'confirmed').length
-
-  const filtered = allOrderItems.filter(({ order, seller, buyer }) => {
-    if (filter !== 'all' && order.status !== filter) return false
-    if (search.trim()) {
-      const q = search.toLowerCase()
-      const orderNum = formatOrderNumber(order.id).toLowerCase()
-      const buyerName = (buyer?.fullName ?? '').toLowerCase()
-      const sellerName = (seller?.businessName ?? '').toLowerCase()
-      const partName = (order.items[0]?.part.partName ?? '').toLowerCase()
-      if (
-        !orderNum.includes(q) &&
-        !buyerName.includes(q) &&
-        !sellerName.includes(q) &&
-        !partName.includes(q)
-      ) return false
-    }
-    return true
-  })
+  const filtered = mockBuyerRequests.filter((r) => matchesFilter(r, activeFilter))
 
   return (
     <PageContainer className="pb-10">
       <SectionHeader
-        title="Παραγγελίες"
-        subtitle={`${stats.totalOrders} παραγγελίες πλατφόρμας`}
+        title="Αιτήματα marketplace"
+        subtitle="Παρακολούθηση αιτημάτων μεταξύ αγοραστών και πωλητών."
       />
 
-      {/* Summary */}
-      <DashboardGrid cols={4} className="mb-6">
-        <MetricCard label="Σύνολο" value={stats.totalOrders} />
-        <MetricCard label="Σε αναμονή" value={stats.pendingOrders} />
-        <MetricCard label="Προς αποστολή" value={confirmedCount} />
-        <MetricCard label="Τζίρος" value={formatPrice(stats.totalRevenue)} />
-      </DashboardGrid>
-
-      {/* Filters + search */}
-      <div className="space-y-3 mb-5">
-        <div className="flex gap-1.5 overflow-x-auto pb-0.5 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-          {FILTER_OPTIONS.map((opt) => (
-            <FilterChip
-              key={opt.value}
-              label={opt.label}
-              selected={filter === opt.value}
-              onClick={() => setFilter(opt.value)}
-            />
-          ))}
-        </div>
-        <SearchInput
-          placeholder="Αρ. παραγγελίας, αγοραστής, πωλητής, ανταλλακτικό..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          onClear={() => setSearch('')}
-        />
+      {/* Filter chips */}
+      <div className="flex gap-1.5 overflow-x-auto pb-0.5 mb-5 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+        {FILTER_OPTIONS.map((opt) => (
+          <FilterChip
+            key={opt.value}
+            label={opt.label}
+            selected={activeFilter === opt.value}
+            onClick={() => setActiveFilter(opt.value)}
+          />
+        ))}
       </div>
 
-      <p className="text-xs text-slate-500 mb-3">{filtered.length} παραγγελίες</p>
+      <p className="text-xs text-slate-500 mb-3">
+        {filtered.length === mockBuyerRequests.length
+          ? `${mockBuyerRequests.length} αιτήματα`
+          : `${filtered.length} από ${mockBuyerRequests.length} αιτήματα`}
+      </p>
 
-      {/* Orders list */}
       {filtered.length === 0 ? (
-        <div className="bg-white border border-dashed border-slate-300 rounded-xl py-12 text-center">
-          <p className="text-sm text-slate-500">Δεν βρέθηκαν παραγγελίες</p>
+        <div className="bg-white border border-dashed border-slate-300 rounded-xl py-14 text-center">
+          <p className="text-sm font-medium text-slate-600 mb-1">Δεν υπάρχουν αιτήματα</p>
+          {activeFilter !== 'all' && (
+            <button type="button" onClick={() => setActiveFilter('all')} className="text-xs font-medium text-blue-600 hover:text-blue-700 mt-2">
+              Καθαρισμός φίλτρου
+            </button>
+          )}
         </div>
       ) : (
         <div className="space-y-3">
-          {filtered.map(({ order, seller, buyer }) => {
-            const item = order.items[0]
-            return (
-              <div
-                key={order.id}
-                className="bg-white border border-slate-200 rounded-xl px-4 py-4"
-              >
-                {/* Top row */}
-                <div className="flex items-center justify-between gap-2 mb-2">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className="text-sm font-bold text-slate-900 font-mono flex-shrink-0">
-                      #{formatOrderNumber(order.id)}
-                    </span>
-                    <Badge variant={ORDER_STATUS_VARIANT[order.status]}>
-                      {ORDER_STATUS_LABELS[order.status]}
-                    </Badge>
-                    {order.payment && (
-                      <Badge variant={PAYMENT_STATUS_VARIANT[order.payment.status]}>
-                        {PAYMENT_STATUS_LABELS[order.payment.status]}
-                      </Badge>
-                    )}
-                  </div>
-                  <span className="text-sm font-bold text-slate-900 flex-shrink-0 tabular-nums">
-                    {formatPrice(order.totalAmount)}
-                  </span>
-                </div>
-
-                {/* Part */}
-                {item && (
-                  <p className="text-sm font-medium text-slate-800 truncate mb-1">
-                    {item.part.partName}
-                    <span className="font-normal text-slate-400 ml-1">
-                      · {item.part.vehicle.make} {item.part.vehicle.model}
-                    </span>
-                  </p>
-                )}
-
-                {/* Buyer → Seller */}
-                <p className="text-xs text-slate-500 truncate mb-1">
-                  {buyer?.fullName ?? '—'}
-                  <span className="text-slate-300 mx-1.5">→</span>
-                  {seller?.businessName ?? '—'}
-                </p>
-
-                {/* Meta */}
-                <div className="flex items-center gap-3 text-xs text-slate-400">
-                  {order.payment && <span>{PAYMENT_METHOD_LABELS[order.payment.method]}</span>}
-                  {order.shipment && <span>{DELIVERY_METHOD_LABELS[order.shipment.method]}</span>}
-                  <span>{formatDate(order.createdAt)}</span>
-                </div>
-              </div>
-            )
-          })}
+          {filtered.map((req) => (
+            <RequestCard key={req.id} req={req} />
+          ))}
         </div>
       )}
     </PageContainer>
