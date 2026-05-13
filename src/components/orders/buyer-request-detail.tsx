@@ -14,6 +14,9 @@ import { DELIVERY_PREFERENCE_LABELS } from '@/lib/requests/delivery'
 import { buildBaseActivityEvents } from '@/lib/requests/activity'
 import type { RequestActivityEvent } from '@/lib/requests/activity'
 import { RequestActivityTimeline } from '@/components/orders/request-activity-timeline'
+import { buildBaseRequestMessages } from '@/lib/requests/messages'
+import type { RequestMessage } from '@/lib/requests/messages'
+import { RequestMessageThread } from '@/components/orders/request-message-thread'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -75,11 +78,18 @@ function BuyerRequestDetailContent({ request }: { request: BuyerRequest }) {
   const [msgText,       setMsgText]       = useState('')
   const [successNote,   setSuccessNote]   = useState<string | null>(null)
   const [localEvents,   setLocalEvents]   = useState<RequestActivityEvent[]>([])
+  const [localMessages, setLocalMessages] = useState<RequestMessage[]>([])
   const eventCounter = useRef(0)
+  const msgCounter   = useRef(0)
 
   const addEvent = (event: Omit<RequestActivityEvent, 'id'>) => {
     eventCounter.current += 1
     setLocalEvents((prev) => [...prev, { ...event, id: `local-${eventCounter.current}` }])
+  }
+
+  const addMessage = (msg: Omit<RequestMessage, 'id'>) => {
+    msgCounter.current += 1
+    setLocalMessages((prev) => [...prev, { ...msg, id: `msg-${msgCounter.current}` }])
   }
 
   const displayStatus: RequestStatus = priceAccepted ? 'completed' : status
@@ -103,12 +113,14 @@ function BuyerRequestDetailContent({ request }: { request: BuyerRequest }) {
     const text = msgText.trim()
     setShowMsgPanel(false)
     setMsgText('')
+    addMessage({ author: 'buyer', authorLabel: request.buyerCompany, body: text })
     addEvent({ title: 'Μήνυμα στάλθηκε', description: text, tone: 'info' })
     showToast('Το μήνυμα στάλθηκε για το demo.')
   }
 
   const canAcceptPrice = request.priceSent !== undefined && !priceAccepted && displayStatus !== 'completed'
-  const allEvents = [...buildBaseActivityEvents(request), ...localEvents]
+  const allEvents   = [...buildBaseActivityEvents(request), ...localEvents]
+  const allMessages = [...buildBaseRequestMessages(request), ...localMessages]
 
   return (
     <>
@@ -176,19 +188,8 @@ function BuyerRequestDetailContent({ request }: { request: BuyerRequest }) {
               <p className="text-xs text-slate-500 mt-1">Επαλυθευμένος πωλητής στο Partlink</p>
             </InfoCard>
 
-            {/* C. Buyer message */}
-            <InfoCard title="Το μήνυμά σου">
-              <p className="text-sm text-slate-700 leading-relaxed italic">&ldquo;{request.message}&rdquo;</p>
-            </InfoCard>
-
-            {/* D. Seller reply */}
-            <InfoCard title="Απάντηση πωλητή">
-              {request.replyNote ? (
-                <p className="text-sm text-slate-700 leading-relaxed">{request.replyNote}</p>
-              ) : (
-                <p className="text-sm text-slate-400 italic">Δεν υπάρχει απάντηση ακόμα.</p>
-              )}
-            </InfoCard>
+            {/* C. Message thread */}
+            <RequestMessageThread messages={allMessages} perspective="buyer" />
 
             {/* Price acceptance banner */}
             {priceAccepted && (

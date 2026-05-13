@@ -15,6 +15,9 @@ import { DELIVERY_PREFERENCE_LABELS } from '@/lib/requests/delivery'
 import { buildBaseActivityEvents } from '@/lib/requests/activity'
 import type { RequestActivityEvent } from '@/lib/requests/activity'
 import { RequestActivityTimeline } from '@/components/orders/request-activity-timeline'
+import { buildBaseRequestMessages } from '@/lib/requests/messages'
+import type { RequestMessage } from '@/lib/requests/messages'
+import { RequestMessageThread } from '@/components/orders/request-message-thread'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -72,20 +75,26 @@ function RequestNotFound() {
 type ActivePanel = 'price' | 'reply' | null
 
 function RequestDetailContent({ request }: { request: BuyerRequest }) {
-  const [status,       setStatus]       = useState<RequestStatus>(request.status)
-  const [priceSent,    setPriceSent]    = useState<number | undefined>(request.priceSent)
-  const [replyNote,    setReplyNote]    = useState<string | undefined>(request.replyNote)
-  const [activePanel,  setActivePanel]  = useState<ActivePanel>(null)
-  const [priceInput,   setPriceInput]   = useState('')
-  const [priceMsg,     setPriceMsg]     = useState('')
-  const [replyText,    setReplyText]    = useState('')
-  const [successNote,  setSuccessNote]  = useState<string | null>(null)
-  const [localEvents,  setLocalEvents]  = useState<RequestActivityEvent[]>([])
+  const [status,         setStatus]         = useState<RequestStatus>(request.status)
+  const [priceSent,      setPriceSent]      = useState<number | undefined>(request.priceSent)
+  const [activePanel,    setActivePanel]    = useState<ActivePanel>(null)
+  const [priceInput,     setPriceInput]     = useState('')
+  const [priceMsg,       setPriceMsg]       = useState('')
+  const [replyText,      setReplyText]      = useState('')
+  const [successNote,    setSuccessNote]    = useState<string | null>(null)
+  const [localEvents,    setLocalEvents]    = useState<RequestActivityEvent[]>([])
+  const [localMessages,  setLocalMessages]  = useState<RequestMessage[]>([])
   const eventCounter = useRef(0)
+  const msgCounter   = useRef(0)
 
   const addEvent = (event: Omit<RequestActivityEvent, 'id'>) => {
     eventCounter.current += 1
     setLocalEvents((prev) => [...prev, { ...event, id: `local-${eventCounter.current}` }])
+  }
+
+  const addMessage = (msg: Omit<RequestMessage, 'id'>) => {
+    msgCounter.current += 1
+    setLocalMessages((prev) => [...prev, { ...msg, id: `msg-${msgCounter.current}` }])
   }
 
   const showActions = status !== 'completed'
@@ -129,13 +138,14 @@ function RequestDetailContent({ request }: { request: BuyerRequest }) {
   const handleSubmitReply = () => {
     if (!replyText.trim()) return
     const text = replyText.trim()
-    setReplyNote(text)
     setActivePanel(null)
+    addMessage({ author: 'seller', authorLabel: 'Πωλητής', body: text })
     addEvent({ title: 'Απάντηση στάλθηκε', description: text, tone: 'info' })
     showToast('Η απάντηση στάλθηκε για το demo.')
   }
 
-  const allEvents = [...buildBaseActivityEvents(request), ...localEvents]
+  const allEvents   = [...buildBaseActivityEvents(request), ...localEvents]
+  const allMessages = [...buildBaseRequestMessages(request), ...localMessages]
 
   // Primary CTA for sticky bar
   const primaryCta = status === 'needs_price' ? 'Αποστολή τιμής' : 'Απάντηση'
@@ -212,10 +222,8 @@ function RequestDetailContent({ request }: { request: BuyerRequest }) {
               </div>
             </InfoCard>
 
-            {/* C. Buyer message */}
-            <InfoCard title="Μήνυμα αγοραστή">
-              <p className="text-sm text-slate-700 leading-relaxed">{request.message}</p>
-            </InfoCard>
+            {/* C. Message thread */}
+            <RequestMessageThread messages={allMessages} perspective="seller" />
 
             {/* Price sent */}
             {priceSent && (
@@ -226,14 +234,6 @@ function RequestDetailContent({ request }: { request: BuyerRequest }) {
                 <p className="text-sm font-semibold text-green-800">
                   Τιμή που στάλθηκε: {formatPrice(priceSent)}
                 </p>
-              </div>
-            )}
-
-            {/* Reply note */}
-            {replyNote && (
-              <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3.5">
-                <p className="text-[11px] font-semibold text-blue-500 uppercase tracking-wide mb-1.5">Απάντηση που στάλθηκε</p>
-                <p className="text-sm text-blue-800 italic leading-relaxed">&ldquo;{replyNote}&rdquo;</p>
               </div>
             )}
 
