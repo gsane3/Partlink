@@ -2,141 +2,178 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { getAdminSellers, getAdminStats } from '@/lib/data/admin'
+import { Badge } from '@/components/ui/badge'
+import { FilterChip } from '@/components/forms/filter-chip'
 import { PageContainer } from '@/components/layout/page-container'
 import { SectionHeader } from '@/components/layout/section-header'
 import { DashboardGrid } from '@/components/layout/dashboard-grid'
 import { MetricCard } from '@/components/layout/metric-card'
-import { FilterChip } from '@/components/forms/filter-chip'
-import { SearchInput } from '@/components/forms/search-input'
-import { Badge } from '@/components/ui/badge'
-import { VERIFICATION_STATUS_LABELS } from '@/lib/constants'
-import { formatPrice } from '@/lib/utils'
-import type { VerificationStatus } from '@/types'
-import type { BadgeVariant } from '@/components/ui/badge'
+import { formatDate } from '@/lib/utils'
+import { ROUTES } from '@/lib/routes'
+import { mockBuyerRequests } from '@/lib/mock-data/buyer-requests'
+import type { BuyerRequest } from '@/lib/mock-data/buyer-requests'
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-const VERIF_BADGE: Record<VerificationStatus, BadgeVariant> = {
-  registered: 'muted',
-  submitted: 'warning',
-  pending: 'warning',
-  approved: 'success',
-  rejected: 'danger',
-  needs_more_info: 'warning',
+interface SellerItem {
+  id:              string
+  name:            string
+  requestCount:    number
+  activeCount:     number
+  needsPriceCount: number
+  priceSentCount:  number
+  completedCount:  number
+  latestActivity:  string
+  note:            string
 }
 
-type SellerFilter = 'all' | 'approved' | 'pending' | 'rejected'
+function latestDate(reqs: BuyerRequest[]): string {
+  return reqs.reduce((max, r) => (r.createdAt > max ? r.createdAt : max), reqs[0].createdAt)
+}
+
+// Group by sellerName
+const sellerMap = new Map<string, BuyerRequest[]>()
+for (const req of mockBuyerRequests) {
+  const name = req.sellerName
+  if (!name) continue
+  const list = sellerMap.get(name)
+  if (list) list.push(req)
+  else sellerMap.set(name, [req])
+}
+
+const allSellers: SellerItem[] = [...sellerMap.entries()].map(([name, reqs], i) => {
+  const active     = reqs.filter((r) => r.status !== 'completed').length
+  const needsPrice = reqs.filter((r) => r.status === 'needs_price').length
+  const priceSent  = reqs.filter((r) => r.priceSent !== undefined).length
+  const completed  = reqs.filter((r) => r.status === 'completed').length
+  return {
+    id:              `seller-${i}`,
+    name,
+    requestCount:    reqs.length,
+    activeCount:     active,
+    needsPriceCount: needsPrice,
+    priceSentCount:  priceSent,
+    completedCount:  completed,
+    latestActivity:  latestDate(reqs),
+    note:            needsPrice > 0
+      ? `${needsPrice} αιτήματα περιμένουν τιμή — παρακολούθηση.`
+      : `Πωλητής με ${active} ενεργά αιτήματα σε εξέλιξη.`,
+  }
+})
+
+const totalCount     = allSellers.length
+const activeTotal    = allSellers.reduce((sum, s) => sum + s.activeCount, 0)
+const needsPriceTotal = allSellers.reduce((sum, s) => sum + s.needsPriceCount, 0)
+const priceSentTotal  = allSellers.reduce((sum, s) => sum + s.priceSentCount, 0)
+
+type SellerFilter = 'all' | 'active' | 'needs_price' | 'price_sent' | 'completed'
 
 const FILTER_OPTIONS: { value: SellerFilter; label: string }[] = [
-  { value: 'all', label: 'Όλοι' },
-  { value: 'approved', label: 'Εγκεκριμένοι' },
-  { value: 'pending', label: 'Σε αναμονή' },
-  { value: 'rejected', label: 'Απορρίφθηκαν' },
+  { value: 'all',         label: 'Όλοι' },
+  { value: 'active',      label: 'Με ενεργά αιτήματα' },
+  { value: 'needs_price', label: 'Αναμονή τιμής' },
+  { value: 'price_sent',  label: 'Τιμή στάλθηκε' },
+  { value: 'completed',   label: 'Demo ολοκληρώσεις' },
 ]
 
-// ─── Page ─────────────────────────────────────────────────────────────────────
+function matchesFilter(s: SellerItem, f: SellerFilter): boolean {
+  if (f === 'all')         return true
+  if (f === 'active')      return s.activeCount > 0
+  if (f === 'needs_price') return s.needsPriceCount > 0
+  if (f === 'price_sent')  return s.priceSentCount > 0
+  if (f === 'completed')   return s.completedCount > 0
+  return true
+}
+
+function StatItem({ label, value, accent }: { label: string; value: number; accent: string }) {
+  return (
+    <span className="flex flex-col items-center">
+      <span className={`text-base font-bold tabular-nums ${accent}`}>{value}</span>
+      <span className="text-[11px] text-slate-400 leading-tight">{label}</span>
+    </span>
+  )
+}
+
+function SellerCard({ seller }: { seller: SellerItem }) {
+  return (
+    <div className="bg-white border border-slate-200 rounded-xl px-4 py-4">
+      <div className="flex items-start justify-between gap-3 mb-3">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-slate-900 truncate">{seller.name}</p>
+          <p className="text-xs text-slate-500 mt-0.5">{seller.note}</p>
+        </div>
+        <Badge variant="success">Πωλητής</Badge>
+      </div>
+
+      <div className="grid grid-cols-5 gap-2 mb-3 text-center">
+        <StatItem label="Σύνολο"        value={seller.requestCount}    accent="text-slate-700" />
+        <StatItem label="Ενεργά"        value={seller.activeCount}     accent={seller.activeCount > 0 ? 'text-blue-600' : 'text-slate-500'} />
+        <StatItem label="Τιμή;"         value={seller.needsPriceCount} accent={seller.needsPriceCount > 0 ? 'text-amber-600' : 'text-slate-500'} />
+        <StatItem label="Τιμή ✓"        value={seller.priceSentCount}  accent={seller.priceSentCount > 0 ? 'text-blue-600' : 'text-slate-500'} />
+        <StatItem label="Demo"          value={seller.completedCount}  accent={seller.completedCount > 0 ? 'text-green-600' : 'text-slate-500'} />
+      </div>
+
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-slate-400">Τελευταία δραστηριότητα: {formatDate(seller.latestActivity)}</p>
+        <Link
+          href={ROUTES.SELLER.ORDERS}
+          className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-700 transition-colors"
+        >
+          Αιτήματα seller
+          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+          </svg>
+        </Link>
+      </div>
+    </div>
+  )
+}
 
 export default function AdminSellersPage() {
-  const [filter, setFilter] = useState<SellerFilter>('all')
-  const [search, setSearch] = useState('')
+  const [activeFilter, setActiveFilter] = useState<SellerFilter>('all')
 
-  const stats = getAdminStats()
-  const allSellers = getAdminSellers()
-
-  const totalParts = allSellers.reduce((sum, s) => sum + s.totalParts, 0)
-  const activeSellers = allSellers.filter((s) => s.seller.verificationStatus === 'approved').length
-  const reviewingSellers = allSellers.filter(
-    (s) => s.seller.verificationStatus === 'pending' || s.seller.verificationStatus === 'submitted'
-  ).length
-
-  const filtered = allSellers.filter(({ seller }) => {
-    const status = seller.verificationStatus
-    if (filter === 'approved' && status !== 'approved') return false
-    if (filter === 'pending' && status !== 'pending' && status !== 'submitted') return false
-    if (filter === 'rejected' && status !== 'rejected') return false
-    if (search.trim()) {
-      const q = search.toLowerCase()
-      if (!seller.businessName.toLowerCase().includes(q) && !seller.city.toLowerCase().includes(q)) {
-        return false
-      }
-    }
-    return true
-  })
+  const filtered = allSellers.filter((s) => matchesFilter(s, activeFilter))
 
   return (
     <PageContainer className="pb-10">
       <SectionHeader
-        title="Πωλητές"
-        subtitle={`${stats.totalSellers} εγγεγραμμένοι πωλητές`}
+        title="Sellers"
+        subtitle="Πωλητές που συμμετέχουν σε αιτήματα marketplace."
       />
 
-      {/* Summary */}
       <DashboardGrid cols={4} className="mb-6">
-        <MetricCard label="Σύνολο" value={stats.totalSellers} />
-        <MetricCard label="Ενεργοί" value={activeSellers} />
-        <MetricCard label="Σε έλεγχο" value={reviewingSellers} />
-        <MetricCard label="Ανταλλακτικά" value={totalParts} />
+        <MetricCard label="Σύνολο πωλητών" value={totalCount} />
+        <MetricCard label="Ενεργά αιτήματα" value={activeTotal} />
+        <MetricCard label="Αναμονή τιμής"   value={needsPriceTotal} />
+        <MetricCard label="Τιμή στάλθηκε"   value={priceSentTotal} />
       </DashboardGrid>
 
-      {/* Filters + search */}
-      <div className="space-y-3 mb-5">
-        <div className="flex gap-1.5 overflow-x-auto pb-0.5 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-          {FILTER_OPTIONS.map((opt) => (
-            <FilterChip
-              key={opt.value}
-              label={opt.label}
-              selected={filter === opt.value}
-              onClick={() => setFilter(opt.value)}
-            />
+      <div className="flex gap-1.5 overflow-x-auto pb-0.5 mb-5 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+        {FILTER_OPTIONS.map((opt) => (
+          <FilterChip
+            key={opt.value}
+            label={opt.label}
+            selected={activeFilter === opt.value}
+            onClick={() => setActiveFilter(opt.value)}
+          />
+        ))}
+      </div>
+
+      <p className="text-xs text-slate-500 mb-3">
+        {filtered.length === totalCount
+          ? `${totalCount} πωλητές`
+          : `${filtered.length} από ${totalCount} πωλητές`}
+      </p>
+
+      {filtered.length === 0 ? (
+        <div className="bg-white border border-dashed border-slate-300 rounded-xl py-14 text-center">
+          <p className="text-sm font-medium text-slate-600">Δεν υπάρχουν πωλητές</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {filtered.map((seller) => (
+            <SellerCard key={seller.id} seller={seller} />
           ))}
         </div>
-        <SearchInput
-          placeholder="Επωνυμία, πόλη..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          onClear={() => setSearch('')}
-        />
-      </div>
-
-      <p className="text-xs text-slate-500 mb-3">{filtered.length} πωλητές</p>
-
-      {/* Sellers list — table on desktop, cards on mobile */}
-      <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
-        {filtered.length === 0 ? (
-          <div className="py-12 text-center text-sm text-slate-500">Δεν βρέθηκαν πωλητές</div>
-        ) : (
-          <div className="divide-y divide-slate-100">
-            {filtered.map(({ seller, totalParts: tp, publishedParts, ordersCount, stockValue }) => (
-              <div key={seller.id} className="flex items-center gap-3 px-4 py-4 hover:bg-slate-50 transition-colors">
-                {/* Main info */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    <p className="text-sm font-semibold text-slate-900 truncate">{seller.businessName}</p>
-                    <Badge variant={VERIF_BADGE[seller.verificationStatus]}>
-                      {VERIFICATION_STATUS_LABELS[seller.verificationStatus]}
-                    </Badge>
-                  </div>
-                  <p className="text-xs text-slate-500">{seller.city}</p>
-                  <div className="flex items-center gap-3 mt-1.5 text-xs text-slate-400">
-                    <span>{tp} ανταλλ. ({publishedParts} δημοσ.)</span>
-                    <span>{ordersCount} παραγγ.</span>
-                    <span className="hidden sm:inline">Stock {formatPrice(stockValue)}</span>
-                  </div>
-                </div>
-
-                {/* CTA */}
-                <Link
-                  href={`/admin/verifications/${seller.id}`}
-                  className="flex-shrink-0 inline-flex items-center h-8 px-3 rounded-lg border border-slate-200 text-xs font-medium text-slate-700 hover:bg-slate-50 active:bg-slate-100 transition-colors"
-                >
-                  Προβολή
-                </Link>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+      )}
     </PageContainer>
   )
 }
