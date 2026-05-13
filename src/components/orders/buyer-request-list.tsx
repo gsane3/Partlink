@@ -10,19 +10,13 @@ import { FilterChip } from '@/components/forms/filter-chip'
 import { cn, formatDate, formatPrice } from '@/lib/utils'
 import { ROUTES } from '@/lib/routes'
 import { getBuyerRequests } from '@/lib/mock-data/buyer-requests'
-import type { BuyerRequest, RequestStatus, DeliveryPreference } from '@/lib/mock-data/buyer-requests'
-import type { BadgeVariant } from '@/components/ui/badge'
+import type { BuyerRequest } from '@/lib/mock-data/buyer-requests'
+import { BUYER_STATUS_CONFIG } from '@/lib/requests/status'
+import { DELIVERY_PREFERENCE_LABELS } from '@/lib/requests/delivery'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 type BuyerFilter = 'all' | 'new' | 'in_progress' | 'with_price' | 'completed'
-
-const BUYER_STATUS: Record<RequestStatus, { label: string; variant: BadgeVariant }> = {
-  new:          { label: 'Στάλθηκε',       variant: 'muted' },
-  needs_price:  { label: 'Αναμονή τιμής',  variant: 'warning' },
-  in_progress:  { label: 'Σε εξέλιξη',     variant: 'brand' },
-  completed:    { label: 'Ολοκληρωμένο',   variant: 'success' },
-}
 
 const FILTER_OPTIONS: { value: BuyerFilter; label: string }[] = [
   { value: 'all',         label: 'Όλα' },
@@ -32,11 +26,6 @@ const FILTER_OPTIONS: { value: BuyerFilter; label: string }[] = [
   { value: 'completed',   label: 'Ολοκληρωμένα' },
 ]
 
-const DELIVERY_LABELS: Record<DeliveryPreference, string> = {
-  pickup:   'Παραλαβή',
-  shipping: 'Αποστολή',
-  unknown:  'Δεν ξέρω ακόμα',
-}
 
 function matchesFilter(req: BuyerRequest, f: BuyerFilter): boolean {
   if (f === 'all') return true
@@ -64,7 +53,7 @@ function BuyerRequestCard({
   req, msgPanelOpen, msgText,
   onOpenMsg, onCloseMsg, onMsgChange, onSendMsg, onAcceptPrice,
 }: RequestCardProps) {
-  const { label: statusLabel, variant: statusVariant } = BUYER_STATUS[req.status]
+  const { label: statusLabel, variant: statusVariant } = BUYER_STATUS_CONFIG[req.status]
   const hasPrice = req.partPrice > 0
 
   return (
@@ -98,7 +87,7 @@ function BuyerRequestCard({
           ) : (
             <span className="text-xs text-amber-700 font-medium">Κατόπιν ζήτησης</span>
           )}
-          <span className="text-xs text-slate-400">{DELIVERY_LABELS[req.delivery]}</span>
+          <span className="text-xs text-slate-400">{DELIVERY_PREFERENCE_LABELS[req.delivery]}</span>
         </div>
 
         {/* Seller response: sent price */}

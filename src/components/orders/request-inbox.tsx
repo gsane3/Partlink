@@ -11,8 +11,9 @@ import { FilterChip } from '@/components/forms/filter-chip'
 import { cn, formatDate, formatPrice } from '@/lib/utils'
 import { ROUTES } from '@/lib/routes'
 import { mockBuyerRequests } from '@/lib/mock-data/buyer-requests'
-import type { BuyerRequest, RequestStatus, DeliveryPreference } from '@/lib/mock-data/buyer-requests'
-import type { BadgeVariant } from '@/components/ui/badge'
+import type { BuyerRequest, RequestStatus } from '@/lib/mock-data/buyer-requests'
+import { SELLER_STATUS_CONFIG } from '@/lib/requests/status'
+import { DELIVERY_PREFERENCE_LABELS } from '@/lib/requests/delivery'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -20,13 +21,6 @@ type RequestFilter = 'all' | RequestStatus
 type ActionType = 'price' | 'reply'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-
-const STATUS_CONFIG: Record<RequestStatus, { label: string; variant: BadgeVariant }> = {
-  new:          { label: 'Νέο',              variant: 'warning' },
-  needs_price:  { label: 'Χρειάζεται τιμή', variant: 'warning' },
-  in_progress:  { label: 'Σε εξέλιξη',      variant: 'brand' },
-  completed:    { label: 'Ολοκληρωμένο',    variant: 'muted' },
-}
 
 const FILTER_OPTIONS: { value: RequestFilter; label: string }[] = [
   { value: 'all',          label: 'Όλα' },
@@ -36,11 +30,6 @@ const FILTER_OPTIONS: { value: RequestFilter; label: string }[] = [
   { value: 'completed',    label: 'Ολοκληρωμένα' },
 ]
 
-const DELIVERY_LABELS: Record<DeliveryPreference, string> = {
-  pickup:   'Παραλαβή από κατάστημα',
-  shipping: 'Αποστολή',
-  unknown:  'Δεν ξέρω ακόμα',
-}
 
 // ─── Request card ─────────────────────────────────────────────────────────────
 
@@ -83,7 +72,7 @@ function RequestCard({
   onSubmitPrice,
   onSubmitReply,
 }: RequestCardProps) {
-  const { label: statusLabel, variant: statusVariant } = STATUS_CONFIG[req.status]
+  const { label: statusLabel, variant: statusVariant } = SELLER_STATUS_CONFIG[req.status]
   const hasPrice = req.partPrice > 0
 
   const showActions = req.status !== 'completed'
@@ -129,7 +118,7 @@ function RequestCard({
         <div className="flex items-center gap-2 mt-1">
           <span className="text-xs text-slate-400">{formatDate(req.createdAt)}</span>
           <span className="text-slate-200">·</span>
-          <span className="text-xs text-slate-400">{DELIVERY_LABELS[req.delivery]}</span>
+          <span className="text-xs text-slate-400">{DELIVERY_PREFERENCE_LABELS[req.delivery]}</span>
         </div>
         {req.message && (
           <p className="text-xs text-slate-500 mt-1.5 line-clamp-1 italic">&ldquo;{req.message}&rdquo;</p>

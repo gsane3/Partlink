@@ -9,23 +9,11 @@ import { PageContainer } from '@/components/layout/page-container'
 import { cn, formatDate, formatPrice } from '@/lib/utils'
 import { ROUTES } from '@/lib/routes'
 import { findBuyerRequestById } from '@/lib/mock-data/buyer-requests'
-import type { BuyerRequest, RequestStatus, DeliveryPreference } from '@/lib/mock-data/buyer-requests'
-import type { BadgeVariant } from '@/components/ui/badge'
+import type { BuyerRequest, RequestStatus } from '@/lib/mock-data/buyer-requests'
+import { SELLER_STATUS_CONFIG } from '@/lib/requests/status'
+import { DELIVERY_PREFERENCE_LABELS } from '@/lib/requests/delivery'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-
-const STATUS_CONFIG: Record<RequestStatus, { label: string; variant: BadgeVariant }> = {
-  new:          { label: 'Νέο',              variant: 'warning' },
-  needs_price:  { label: 'Χρειάζεται τιμή', variant: 'warning' },
-  in_progress:  { label: 'Σε εξέλιξη',      variant: 'brand' },
-  completed:    { label: 'Ολοκληρωμένο',    variant: 'muted' },
-}
-
-const DELIVERY_LABELS: Record<DeliveryPreference, string> = {
-  pickup:   'Παραλαβή από κατάστημα',
-  shipping: 'Αποστολή',
-  unknown:  'Δεν ξέρω ακόμα',
-}
 
 // ─── Layout helpers ───────────────────────────────────────────────────────────
 
@@ -92,7 +80,7 @@ function RequestDetailContent({ request }: { request: BuyerRequest }) {
 
   const showActions = status !== 'completed'
   const hasPrice    = request.partPrice > 0
-  const { label: statusLabel, variant: statusVariant } = STATUS_CONFIG[status]
+  const { label: statusLabel, variant: statusVariant } = SELLER_STATUS_CONFIG[status]
 
   const showToast = (msg: string) => {
     setSuccessNote(msg)
@@ -188,7 +176,7 @@ function RequestDetailContent({ request }: { request: BuyerRequest }) {
                 {request.donorVehicle && (
                   <InfoRow label="Όχημα">{request.donorVehicle}</InfoRow>
                 )}
-                <InfoRow label="Παραλαβή">{DELIVERY_LABELS[request.delivery]}</InfoRow>
+                <InfoRow label="Παραλαβή">{DELIVERY_PREFERENCE_LABELS[request.delivery]}</InfoRow>
                 <InfoRow label="Ημερομηνία">{formatDate(request.createdAt)}</InfoRow>
                 <InfoRow label="Κατάσταση"><Badge variant={statusVariant}>{statusLabel}</Badge></InfoRow>
               </div>
