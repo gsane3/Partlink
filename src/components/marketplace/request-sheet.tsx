@@ -6,6 +6,7 @@ import { cn, formatPrice } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { ROUTES } from '@/lib/routes'
 import type { PartInfo } from '@/lib/mock-data/part-detail'
+import { getCurrentBuyerProfile } from '@/lib/mock-data/profiles'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -16,17 +17,6 @@ export interface RequestSheetProps {
   partInfo: PartInfo
   sellerName?: string
   onClose: () => void
-}
-
-// ─── Mock buyer profile (replaced by real auth later) ─────────────────────────
-// Later: add shipping address fields from verified company profile: address, postalCode, city, country.
-
-const MOCK_BUYER = {
-  businessName: 'Papadopoulos Auto Parts',
-  contactName:  'Γιώργος Παπαδόπουλος',
-  phone:        '69 0000 0000',
-  email:        'buyer@example.com',
-  city:         'Αθήνα',
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -40,6 +30,7 @@ const DELIVERY_OPTIONS: { value: DeliveryOption; label: string }[] = [
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function RequestSheet({ mode, partInfo, sellerName, onClose }: RequestSheetProps) {
+  const profile  = getCurrentBuyerProfile()
   const hasPrice = partInfo.price > 0
 
   const [step,         setStep]         = useState<'form' | 'success'>('form')
@@ -153,11 +144,11 @@ export function RequestSheet({ mode, partInfo, sellerName, onClose }: RequestShe
 
                 <div className="px-4 py-3 space-y-2">
                   {[
-                    { label: 'Επιχείρηση', value: MOCK_BUYER.businessName },
-                    { label: 'Υπεύθυνος',  value: MOCK_BUYER.contactName },
-                    { label: 'Τηλέφωνο',   value: MOCK_BUYER.phone },
-                    { label: 'Email',       value: MOCK_BUYER.email },
-                    { label: 'Περιοχή',     value: MOCK_BUYER.city },
+                    { label: 'Επιχείρηση', value: profile.companyName },
+                    { label: 'Υπεύθυνος',  value: profile.contactName },
+                    { label: 'Τηλέφωνο',   value: profile.phone },
+                    { label: 'Email',       value: profile.email },
+                    { label: 'Περιοχή',     value: profile.city },
                   ].map((row) => (
                     <div key={row.label} className="flex items-center justify-between gap-3">
                       <span className="text-xs text-slate-500 flex-shrink-0 w-28">{row.label}</span>
@@ -242,7 +233,7 @@ export function RequestSheet({ mode, partInfo, sellerName, onClose }: RequestShe
                   { label: 'Ανταλλακτικό',     value: partInfo.partName },
                   ...(sellerName ? [{ label: 'Πωλητής', value: sellerName }] : []),
                   { label: 'Παραλαβή',          value: deliveryLabel },
-                  { label: 'Αγοραστής', value: `${MOCK_BUYER.businessName} · ${MOCK_BUYER.phone}` },
+                  { label: 'Αγοραστής', value: `${profile.companyName} · ${profile.phone}` },
                 ].map((row) => (
                   <div key={row.label} className="flex items-start justify-between gap-3 py-2.5 first:pt-0 last:pb-0">
                     <span className="text-xs text-slate-500 flex-shrink-0 w-32">{row.label}</span>

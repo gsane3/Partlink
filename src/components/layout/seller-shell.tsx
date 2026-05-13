@@ -190,7 +190,8 @@ export function SellerShell({ children }: { children: ReactNode }) {
       <MobileBottomNav items={SELLER_MOBILE_NAV} />
       {!(pathname.startsWith('/seller/inventory/') && pathname !== '/seller/inventory') &&
         !pathname.startsWith('/seller/orders') &&
-        !pathname.startsWith('/seller/chats') && (
+        !pathname.startsWith('/seller/chats') &&
+        !pathname.startsWith('/seller/settings') && (
         <MobileFAB actions={SELLER_FAB_ACTIONS} />
       )}
     </div>
