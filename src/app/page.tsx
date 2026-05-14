@@ -36,7 +36,7 @@ export default function HomePage() {
           {[
             { title: 'Πωλητές', desc: 'Οργανώστε το stock σας με SKU και QR label ανά ανταλλακτικό.', href: '/seller' },
             { title: 'Αγοραστές', desc: 'Βρείτε ανταλλακτικά με VIN, part number ή κατηγορία.', href: '/buyer/marketplace' },
-            { title: 'Διαχείριση', desc: 'Επαλήθευση πωλητών, παρακολούθηση παραγγελιών.', href: '/admin' },
+            { title: 'Διαχείριση', desc: 'Επαλήθευση πωλητών, παρακολούθηση αιτημάτων.', href: '/admin' },
           ].map((card) => (
             <Link
               key={card.href}

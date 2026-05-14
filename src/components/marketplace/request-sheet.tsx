@@ -44,7 +44,7 @@ export function RequestSheet({ mode, partInfo, sellerName, onClose }: RequestShe
 
   const title = mode === 'message'
     ? 'Μήνυμα στον πωλητή'
-    : hasPrice ? 'Ζήτηση για αγορά' : 'Ζήτα τιμή'
+    : hasPrice ? 'Στείλε αίτημα' : 'Ζήτα τιμή'
 
   const submitLabel = mode === 'message'
     ? 'Αποστολή μηνύματος'
