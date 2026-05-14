@@ -21,9 +21,10 @@ export function SuccessStep({ form, sku, onReset }: SuccessStepProps) {
         <h2 className="text-xl font-bold text-slate-900">Το ανταλλακτικό προστέθηκε!</h2>
         <p className="text-sm text-slate-500 mt-1.5 max-w-xs mx-auto">
           {form.publishToMarketplace
-            ? 'Προστέθηκε στο stock και δημοσιεύτηκε στο marketplace.'
-            : 'Προστέθηκε στο stock σου.'}
+            ? 'Στο demo: στο stock και στο marketplace.'
+            : 'Στο demo: στο stock σου.'}
         </p>
+        <p className="text-xs text-slate-400 mt-1">SKU και QR είναι demo — δεν αποθηκεύονται μετά από refresh.</p>
       </div>
 
       {/* SKU */}

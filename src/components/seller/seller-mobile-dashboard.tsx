@@ -152,11 +152,12 @@ export function SellerMobileDashboard() {
         <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide mb-3">
           Γρήγορες ενέργειες
         </p>
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-2 gap-2">
           {[
-            { label: 'Stock', href: ROUTES.SELLER.INVENTORY },
+            { label: 'Πρόσθεσε ανταλλακτικό', href: ROUTES.SELLER.INVENTORY_ADD },
             { label: 'Εισαγωγή με VIN', href: ROUTES.SELLER.INVENTORY_VIN_IMPORT },
-            { label: 'Προσθήκη', href: ROUTES.SELLER.INVENTORY_ADD },
+            { label: 'Σκάναρε QR', href: ROUTES.SELLER.INVENTORY_SCAN },
+            { label: 'Stock', href: ROUTES.SELLER.INVENTORY },
           ].map(({ label, href }) => (
             <Link
               key={href}

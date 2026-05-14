@@ -90,9 +90,9 @@ function doScan(raw: string): ScanState {
 // ─── Demo shortcuts ───────────────────────────────────────────────────────────
 
 const DEMO_PART_SCANS = [
-  { sku: 'PL-001-0002', label: 'Φανάρι εμπρός W204', sub: 'Παραγγελία σε αναμονή' },
-  { sku: 'PL-001-0003', label: 'ECU Golf 5 1.9 TDI', sub: 'Παραγγελία επιβεβαιωμένη' },
-  { sku: 'PL-001-0004', label: 'Αερόσακος Astra H', sub: 'Χωρίς παραγγελία' },
+  { sku: 'PL-001-0002', label: 'Φανάρι εμπρός W204', sub: 'Αίτημα σε αναμονή' },
+  { sku: 'PL-001-0003', label: 'ECU Golf 5 1.9 TDI', sub: 'Αίτημα επιβεβαιωμένο' },
+  { sku: 'PL-001-0004', label: 'Αερόσακος Astra H', sub: 'Χωρίς εκκρεμές αίτημα' },
 ]
 
 const DEMO_VEHICLE_SCANS = [
@@ -110,11 +110,11 @@ function OrderDispatchCard({ order }: { order: Order }) {
           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
           <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500" />
         </span>
-        <span className="text-sm font-semibold text-amber-900">Παραγγελία εκκρεμεί αποστολή</span>
+        <span className="text-sm font-semibold text-amber-900">Εκκρεμής αποστολή</span>
       </div>
       <div className="px-4 py-3 space-y-2">
         <div className="flex justify-between items-center">
-          <span className="text-sm text-slate-500">Παραγγελία</span>
+          <span className="text-sm text-slate-500">Κωδικός</span>
           <span className="text-sm font-semibold text-slate-900">#{orderId}</span>
         </div>
         <div className="flex justify-between items-center">
@@ -284,7 +284,7 @@ function DispatchScreen({
 }) {
   return (
     <>
-      <ScanSuccessBanner message="QR αναγνωρίστηκε — παραγγελία εκκρεμεί" />
+      <ScanSuccessBanner message="QR αναγνωρίστηκε — εκκρεμής αποστολή" />
 
       <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide mb-2">
         Ανταλλακτικό
@@ -327,7 +327,7 @@ function StockScreen({
 }) {
   return (
     <>
-      <ScanSuccessBanner message="QR αναγνωρίστηκε — χωρίς εκκρεμή παραγγελία" />
+      <ScanSuccessBanner message="QR αναγνωρίστηκε — χωρίς εκκρεμή αποστολή" />
 
       <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide mb-2">
         Ανταλλακτικό
@@ -542,10 +542,10 @@ function SuccessDispatchScreen({
 }) {
   const orderId = formatOrderNumber(order.id)
   const updates = [
-    { label: 'Κατάσταση παραγγελίας', value: 'Απεστάλη', color: 'text-green-700' },
+    { label: 'Κατάσταση αιτήματος', value: 'Απεστάλη', color: 'text-green-700' },
     { label: 'Κατάσταση ανταλλακτικού', value: 'Απεστάλη', color: 'text-blue-700' },
-    { label: 'Marketplace', value: 'Αφαιρέθηκε από αγγελίες', color: 'text-slate-600' },
-    { label: 'Stock', value: 'Ενημερώθηκε αυτόματα', color: 'text-slate-600' },
+    { label: 'Marketplace', value: 'Αφαιρέθηκε (demo)', color: 'text-slate-600' },
+    { label: 'Stock', value: 'Ενημερώθηκε (demo)', color: 'text-slate-600' },
   ]
 
   return (
@@ -555,8 +555,8 @@ function SuccessDispatchScreen({
           <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
         </svg>
       </div>
-      <h2 className="text-xl font-bold text-slate-900">Αποστολή επιβεβαιώθηκε!</h2>
-      <p className="text-sm text-slate-500 mt-1.5">Η παραγγελία #{orderId} εστάλη επιτυχώς.</p>
+      <h2 className="text-xl font-bold text-slate-900">Αποστολή επιβεβαιώθηκε</h2>
+      <p className="text-sm text-slate-500 mt-1.5">Αίτημα #{orderId} — επόμενο βήμα αποστολής για το demo.</p>
 
       <div className="mt-6 bg-white border border-slate-200 rounded-xl overflow-hidden text-left mb-6">
         <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-100">
@@ -584,7 +584,7 @@ function SuccessDispatchScreen({
           Σκάναρε άλλο QR
         </button>
         <Link href={ROUTES.SELLER.ORDER_DETAIL(order.id)} className="w-full h-11 border border-slate-200 text-slate-700 text-sm font-medium rounded-xl flex items-center justify-center gap-2 hover:bg-slate-50 active:bg-slate-100 transition-colors">
-          Δες παραγγελία
+          Δες αίτημα
         </Link>
         <Link href={ROUTES.SELLER.INVENTORY} className="block text-center text-sm text-slate-500 hover:text-slate-700 py-2 transition-colors">
           Επιστροφή στο stock
@@ -656,7 +656,7 @@ function SuccessVehiclePartRemovedScreen({
 
   const updates = [
     { label: 'Ανταλλακτικό', value: 'Εκτός αυτοκινήτου', color: 'text-amber-700' },
-    { label: 'Stock', value: 'Ενημερώθηκε', color: 'text-green-700' },
+    { label: 'Stock', value: 'Ενημερώθηκε (demo)', color: 'text-slate-600' },
     {
       label: 'Marketplace',
       value: publishedToMarketplace ? 'Παραμένει διαθέσιμο' : 'Δεν ήταν δημοσιευμένο',
