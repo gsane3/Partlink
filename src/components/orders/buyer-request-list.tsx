@@ -127,7 +127,7 @@ function BuyerRequestCard({
       {!msgPanelOpen && (
         <div className="border-t border-slate-100 px-4 py-2.5 flex items-center gap-2 flex-wrap">
           <Link
-            href={ROUTES.SELLER.ORDER_DETAIL(req.id).replace('/seller/', '/buyer/')}
+            href={ROUTES.BUYER.ORDER_DETAIL(req.id)}
             className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-700 transition-colors"
           >
             Άνοιγμα

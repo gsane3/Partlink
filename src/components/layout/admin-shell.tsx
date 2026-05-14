@@ -105,7 +105,7 @@ const PAGE_TITLES: Record<string, string> = {
 
 function getTitle(pathname: string): string {
   if (PAGE_TITLES[pathname]) return PAGE_TITLES[pathname]
-  if (pathname.startsWith('/admin/verifications/')) return 'Έλεγχος πωλητή'
+  if (pathname.startsWith('/admin/verifications/')) return 'Επαλήθευση προφίλ'
   return 'Admin'
 }
 
